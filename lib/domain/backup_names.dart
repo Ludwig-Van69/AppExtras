@@ -1,0 +1,91 @@
+/// Nombres de los archivos de copia y qué copias sobran (RF-5, RF-6).
+library;
+
+/// Cuántas copias automáticas se guardan (RF-6).
+const backupsToKeep = 10;
+
+enum BackupKind {
+  /// Las que se hacen solas o con «Hacer copia ahora»; se borran las viejas.
+  automatic('horas-copia-'),
+
+  /// La que se guarda justo antes de restaurar; nunca se borra sola (RF-14).
+  beforeRestore('horas-antes-de-restaurar-');
+
+  const BackupKind(this.prefix);
+  final String prefix;
+}
+
+/// Una copia reconocida por su nombre.
+class BackupInfo {
+  const BackupInfo(this.name, this.kind, this.takenAt, this.copyNumber);
+
+  final String name;
+  final BackupKind kind;
+  final DateTime takenAt;
+
+  /// 1 para la primera de ese segundo; 2, 3… si se repite (`-2`, `-3`).
+  final int copyNumber;
+}
+
+/// Nombre para una copia hecha en [takenAt] (hora local). Si ya existe
+/// alguno de [existing], añade `-2`, `-3`… para no pisarlo.
+String backupFileName(
+  DateTime takenAt, {
+  BackupKind kind = BackupKind.automatic,
+  Set<String> existing = const {},
+}) {
+  final base = '${kind.prefix}${_stamp(takenAt)}';
+  var name = '$base.db';
+  for (var n = 2; existing.contains(name); n++) {
+    name = '$base-$n.db';
+  }
+  return name;
+}
+
+final _pattern = RegExp(
+  r'^(horas-copia-|horas-antes-de-restaurar-)'
+  r'(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(?:-([2-9]|[1-9]\d+))?\.db$',
+);
+
+/// La copia que corresponde a [name], o nulo si no es una copia de la app.
+BackupInfo? parseBackupName(String name) {
+  final m = _pattern.firstMatch(name);
+  if (m == null) return null;
+  final kind = BackupKind.values.firstWhere((k) => k.prefix == m[1]);
+  final p = [for (var i = 2; i <= 7; i++) int.parse(m[i]!)];
+  final t = DateTime(p[0], p[1], p[2], p[3], p[4], p[5]);
+  // Rechaza fechas imposibles (30 de febrero, 25 horas…).
+  if (_stamp(t) !=
+      name.substring(kind.prefix.length, kind.prefix.length + 19)) {
+    return null;
+  }
+  return BackupInfo(name, kind, t, m[8] == null ? 1 : int.parse(m[8]!));
+}
+
+/// Las copias de [names], de la más reciente a la más antigua; ignora el
+/// resto de archivos.
+List<BackupInfo> sortedBackups(Iterable<String> names) =>
+    names.map(parseBackupName).whereType<BackupInfo>().toList()..sort((a, b) {
+      final byTime = b.takenAt.compareTo(a.takenAt);
+      return byTime != 0 ? byTime : b.copyNumber.compareTo(a.copyNumber);
+    });
+
+/// Las copias automáticas que sobran, de la más antigua a la más reciente.
+/// Nunca incluye copias previas a restaurar ni archivos ajenos (RF-6).
+List<String> backupsToPrune(
+  Iterable<String> names, {
+  int keep = backupsToKeep,
+}) =>
+    sortedBackups(names)
+        .where((b) => b.kind == BackupKind.automatic)
+        .skip(keep)
+        .map((b) => b.name)
+        .toList()
+        .reversed
+        .toList();
+
+String _stamp(DateTime t) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${t.year.toString().padLeft(4, '0')}-${two(t.month)}-${two(t.day)}'
+      '_${two(t.hour)}-${two(t.minute)}-${two(t.second)}';
+}

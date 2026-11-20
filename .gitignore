@@ -1,0 +1,71 @@
+# .gitignore — lo que NUNCA se sube al repositorio.
+# Al arrancar el proyecto, el agente añade lo propio de las tecnologías elegidas.
+
+# --- Datos personales del usuario (ajusta la carpeta al proyecto) ---
+datos/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+
+# Excel y exportaciones con datos reales (los de prueba van en test/fixtures/)
+*.xlsx
+*.xls
+*.csv
+!test/fixtures/**
+
+# --- Claves, contraseñas y configuración privada ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credenciales*
+
+# --- Archivos generados (se pueden volver a crear) ---
+build/
+dist/
+out/
+coverage/
+*.log
+tmp/
+.cache/
+
+# --- Flutter / Dart / Android ---
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+.history
+migrate_working_dir/
+*.class
+app.*.symbols
+app.*.map.json
+/android/app/debug
+/android/app/profile
+/android/app/release
+.widget_preview/
+*.iml
+*.apk
+*.aab
+android/.gradle/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+
+# --- Sistema operativo y editores ---
+.DS_Store
+Thumbs.db
+.directory
+.vscode/
+.idea/
+*.swp
+
+# --- Ajustes locales de las herramientas de IA ---
+.claude/settings.local.json
+
+# Capturas locales de la pasada estética (no se suben)
+test/_capturas/
