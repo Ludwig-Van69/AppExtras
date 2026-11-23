@@ -157,7 +157,8 @@ class PricedDay {
   int get weight => (rateCents ?? 0) * entry.minutes;
 }
 
-/// Horas apartadas a un cajón (008) con la tarifa normal de su fecha.
+/// Horas que salen de un mes (apartadas a un cajón, 008, o cambiadas por
+/// libre, 022) con la tarifa normal de su fecha.
 class PricedSetAside {
   const PricedSetAside(this.move, this.rateCents);
   final SavedMove move;
@@ -213,8 +214,17 @@ class MonthLine {
   int get loggedMinutes =>
       minutesOf(DayKind.normal) + minutesOf(DayKind.festive);
 
-  /// Horas apartadas a los cajones (siempre normales).
+  /// Horas que salen del mes (siempre normales): las apartadas a los cajones
+  /// y las cambiadas por tiempo libre (022, RF-2).
   int get setAsideMinutes => setAside.fold(0, (sum, s) => sum + s.move.minutes);
+
+  /// Solo las apartadas a los cajones (022, RF-9).
+  int get boxedMinutes => setAside
+      .where((s) => s.move.box != null)
+      .fold(0, (sum, s) => sum + s.move.minutes);
+
+  /// Solo las cambiadas por tiempo libre (022, RF-9).
+  int get swappedMinutes => setAsideMinutes - boxedMinutes;
 
   /// Horas a cobrar del mes: las apuntadas menos las apartadas.
   int get minutes => loggedMinutes - setAsideMinutes;
@@ -304,7 +314,7 @@ class MoneyOverview {
     final recordOf = {for (final r in records) r.month: r};
     final setAsideOf = <YearMonth, List<PricedSetAside>>{};
     for (final m in savedMoves) {
-      if (m.kind != SavedMoveKind.setAside) continue;
+      if (!m.kind.takesFromMonth) continue;
       final rate = rateFor(DayKind.normal, m.date, rates);
       setAsideOf
           .putIfAbsent(YearMonth.of(m.date), () => [])
@@ -489,9 +499,7 @@ SetAsideProblem? checkSetAside(
   return move.minutes > free ? SetAsideProblem.tooMany : null;
 }
 
-/// Horas apartadas a los cajones en [month] (008, RF-8).
+/// Horas apartadas o cambiadas por libre en [month] (008, RF-8; 022, RF-6).
 int setAsideMinutesIn(Iterable<SavedMove> moves, YearMonth month) => moves
-    .where(
-      (m) => m.kind == SavedMoveKind.setAside && YearMonth.of(m.date) == month,
-    )
+    .where((m) => m.kind.takesFromMonth && YearMonth.of(m.date) == month)
     .fold(0, (sum, m) => sum + m.minutes);

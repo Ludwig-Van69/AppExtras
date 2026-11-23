@@ -330,8 +330,7 @@ class LogController extends ChangeNotifier {
     final month = YearMonth.of(date);
     final moves = [
       for (final m in await read())
-        if (m.kind == SavedMoveKind.setAside && YearMonth.of(m.date) == month)
-          m,
+        if (m.kind.takesFromMonth && YearMonth.of(m.date) == month) m,
     ];
     if (moves.isEmpty) return null;
     final monthNormal = _saved.values
@@ -388,13 +387,22 @@ int _daysBetween(DateTime from, DateTime to) => DateTime.utc(
 ).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
 
 /// «Has apartado X h de este mes a (cajón). Quita antes ese apartado.»
-/// (008, RF-8).
+/// (008, RF-8), o su versión con cambios por libre (022, RF-6).
 String setAsideBlockedMessage(List<SavedMove> moves) {
-  final minutes = moves.fold(0, (sum, m) => sum + m.minutes);
+  final hours = formatMinutes(moves.fold(0, (sum, m) => sum + m.minutes));
   final boxes = [
     for (final b in SavedBox.values)
       if (moves.any((m) => m.box == b)) b.label,
   ];
-  return 'Has apartado ${formatMinutes(minutes)} h de este mes a ${boxes.join(' y ')}. '
-      'Quita antes ese apartado.';
+  final swapped = moves.any((m) => m.kind == SavedMoveKind.swap);
+  if (!swapped) {
+    return 'Has apartado $hours h de este mes a ${boxes.join(' y ')}. '
+        'Quita antes ese apartado.';
+  }
+  if (boxes.isEmpty) {
+    return 'Has cambiado $hours h de este mes por tiempo libre. Quita antes '
+        'ese cambio.';
+  }
+  return 'Has sacado $hours h de este mes a ${boxes.join(' y ')} y a tiempo '
+      'libre. Quita antes esos movimientos.';
 }

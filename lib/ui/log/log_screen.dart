@@ -391,7 +391,12 @@ class _LogScreenState extends State<LogScreen> with WidgetsBindingObserver {
     final cents = line?.amountCents ?? 0;
     final amount = money.hideAmounts ? '•••• €' : formatEuros(cents);
     final missing = line != null && !line.isComplete ? ' (falta tarifa)' : '';
-    final label = '${paid ? 'Cobrado' : 'A cobrar'} este mes';
+    final out = line?.setAsideMinutes ?? 0;
+    // Lo apartado o cambiado ya está restado: se dice para que cuadre con
+    // «Este mes» (022, RF-11).
+    final label =
+        '${paid ? 'Cobrado' : 'A cobrar'} este mes'
+        '${out > 0 ? ' · ${formatMinutes(out)} h fuera' : ''}';
     // Va en el hueco de debajo de los botones (012, RF-6). El aviso de
     // Deshacer lo tapa unos segundos: es temporal.
     return Semantics(
@@ -545,7 +550,11 @@ class _LogScreenState extends State<LogScreen> with WidgetsBindingObserver {
             onSave: (date, text) => _c.setReason(text, date: date),
           ),
           if (widget.backup != null)
-            BackupNotice(backup: widget.backup!, onReview: _openBackups),
+            BackupNotice(
+              backup: widget.backup!,
+              onReview: _openBackups,
+              clock: widget.clock,
+            ),
         ],
       ),
     );

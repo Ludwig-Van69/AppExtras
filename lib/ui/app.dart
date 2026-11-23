@@ -11,8 +11,10 @@ import '../data/money_repository.dart';
 import '../data/prefs_store.dart';
 import '../data/saved_hours_repository.dart';
 import '../data/vacation_repository.dart';
+import '../data/first_steps_store.dart';
 import '../data/pre_migration_backup.dart';
 import 'extras/extras_controller.dart';
+import 'first_steps/first_steps_controller.dart';
 import 'holidays/holidays_controller.dart';
 import 'money/money_controller.dart';
 import 'backup/backup_controller.dart';
@@ -35,7 +37,12 @@ class HoursAndVacationApp extends StatefulWidget {
     this.extras,
     this.prefs,
     this.vacation,
+    this.firstSteps,
   });
+
+  /// La tarjeta «Primeros pasos» (024). Si no se indica y se usa la base de
+  /// datos real, la de verdad; con un repositorio de prueba, sin tarjeta.
+  final FirstStepsController? firstSteps;
 
   /// Las vacaciones, igual que [money].
   final VacationController? vacation;
@@ -150,6 +157,13 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
     )..load();
   }
 
+  late final FirstStepsController? _firstSteps =
+      widget.firstSteps ??
+      (widget.repository == null
+          ? (FirstStepsController.withStore(FirstStepsStore.inAppFolder())
+              ..load())
+          : null);
+
   late final PrefsStore? _prefs =
       widget.prefs ??
       (widget.repository == null ? PrefsStore.inAppFolder() : null);
@@ -253,6 +267,7 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
                   money: _money,
                   extras: _extras,
                   vacation: _vacation,
+                  firstSteps: _firstSteps,
                 ),
           ),
         ),

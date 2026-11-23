@@ -37,7 +37,7 @@ void main() {
 
   test('crea la base en la versión 1', () async {
     expect(await db.getVersion(), databaseVersion);
-    expect(databaseVersion, 8);
+    expect(databaseVersion, 9);
   });
 
   test('guarda y lee un día con su tipo y motivo (RF-7, RF-13)', () async {

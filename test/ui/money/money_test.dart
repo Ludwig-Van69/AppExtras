@@ -351,7 +351,11 @@ void main() {
       expect(find.text('Marzo 2025'), findsNothing);
       expect(find.text('3 h · 45,00 €'), findsOneWidget);
       expect(find.byKey(const ValueKey('estado-año-2025')), findsOneWidget);
-      expect(find.text('1 mes sin cobrar'), findsOneWidget);
+      // 2025 tiene un mes sin cobrar (2026 también lo dice en su tarjeta).
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('estado-año-2025'))).data,
+        '1 mes sin cobrar',
+      );
       expect(find.text('Todo cobrado'), findsOneWidget);
 
       await tester.tap(find.text('2025'));
@@ -363,6 +367,15 @@ void main() {
       await tester.tap(find.text('2025'));
       await tester.pumpAndSettle();
       expect(find.text('Marzo 2025'), findsNothing);
+
+      // El año en curso también se pliega, con su resumen.
+      expect(find.byKey(const ValueKey('estado-año-2026')), findsOneWidget);
+      await tester.tap(find.text('2026'));
+      await tester.pumpAndSettle();
+      expect(find.text('Octubre 2026'), findsNothing);
+      await tester.tap(find.text('2026'));
+      await tester.pumpAndSettle();
+      expect(find.text('Octubre 2026'), findsOneWidget);
     });
 
     testWidgets('ocultar importes tapa todos los euros (RF-11)', (

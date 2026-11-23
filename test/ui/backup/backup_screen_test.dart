@@ -392,4 +392,39 @@ void main() {
       }
     }
   });
+
+  group('compartir copia (023)', () {
+    testWidgets('sin carpeta se puede compartir; dice la fecha y cómo '
+        'recuperarla (RF-1, RF-10, RF-11)', (tester) async {
+      await _open(tester);
+      expect(find.textContaining('Última copia compartida'), findsNothing);
+      fake.sharedAt = DateTime(2026, 11, 10, 18);
+      await tester.tap(find.byKey(const ValueKey('compartir-copia')));
+      await tester.pumpAndSettle();
+      expect(fake.calls, ['shareBackup']);
+      expect(find.text('Listo: elige dónde guardar la copia.'), findsOneWidget);
+      expect(find.text('Última copia compartida: hoy, 18:00'), findsOneWidget);
+      await tester.tap(find.byTooltip('Más información: Compartir copia'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('«Elegir otro archivo…»'), findsOneWidget);
+    });
+
+    testWidgets('si falla, dice el motivo (RF-3)', (tester) async {
+      await _open(tester, settings: _good());
+      fake.shareResult = const BackupOutcome.fail('Sin espacio.');
+      await tester.tap(find.byKey(const ValueKey('compartir-copia')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sin espacio.'), findsOneWidget);
+    });
+
+    testWidgets('mientras trabaja, no se puede pulsar', (tester) async {
+      await _open(tester);
+      fake.busy = true;
+      await tester.pump();
+      final b = tester.widget<ButtonStyleButton>(
+        find.byKey(const ValueKey('compartir-copia')),
+      );
+      expect(b.onPressed, isNull);
+    });
+  });
 }

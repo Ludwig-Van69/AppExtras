@@ -25,6 +25,9 @@ class FakeFolderStorage implements FolderStorage {
   /// Lo que se ha compartido: nombre, tipo y contenido.
   final List<({String name, String mime, Uint8List bytes})> shared = [];
 
+  /// Si no es nulo, abrir el menú «Compartir» falla con este problema.
+  StorageProblem? failShare;
+
   Map<String, Uint8List> files(String folder) =>
       folders.putIfAbsent(folder, () => {});
 
@@ -78,6 +81,7 @@ class FakeFolderStorage implements FolderStorage {
 
   @override
   Future<void> shareFile(String name, String mimeType, Uint8List bytes) async {
+    if (failShare case final problem?) throw StorageException(problem);
     shared.add((name: name, mime: mimeType, bytes: bytes));
   }
 }

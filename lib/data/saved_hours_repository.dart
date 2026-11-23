@@ -52,26 +52,29 @@ SavedMove savedMoveWithId(SavedMove move, int id) => SavedMove(
   minutes: move.minutes,
   note: move.note,
   cents: move.cents,
+  dayOff: move.dayOff,
 );
 
 /// Fila de la tabla `saved_moves` (también la usan las copias).
 Map<String, Object?> savedMoveToRow(SavedMove m) => {
   if (m.id != null) 'id': m.id,
-  'box': m.box.name,
+  'box': m.box?.name,
   'kind': m.kind.name,
   'date': dateKey(m.date),
   'minutes': m.minutes,
   'note': m.note,
   'cents': m.cents,
+  'day_off': m.dayOff == null ? null : dateKey(m.dayOff!),
 };
 
 /// Lo contrario de [savedMoveToRow]. Da error si la fila no es válida.
 SavedMove savedMoveFromRow(Map<String, Object?> r) => SavedMove(
   id: r['id']! as int,
-  box: SavedBox.values.byName(r['box']! as String),
+  box: r['box'] == null ? null : SavedBox.values.byName(r['box']! as String),
   kind: SavedMoveKind.values.byName(r['kind']! as String),
   date: parseDateKey(r['date']! as String),
   minutes: r['minutes']! as int,
   note: r['note'] as String?,
   cents: r['cents'] as int?,
+  dayOff: r['day_off'] == null ? null : parseDateKey(r['day_off']! as String),
 );

@@ -88,9 +88,9 @@ class HelpScreen extends StatelessWidget {
           'dos cuentas: horas normales × su tarifa y '
           'festivas × la suya (si cambió la tarifa, una línea por cada una; si '
           'el redondeo de cada mes mueve un céntimo, sale en su línea). Luego la '
-          'lista de meses: los del año en curso a la vista y los años '
-          'anteriores plegados en tarjetas con su resumen; tócalas para '
-          'desplegarlas. Cada mes pasa por '
+          'lista de meses, agrupados por años en tarjetas con su resumen: el '
+          'año en curso sale desplegado y los anteriores, plegados; toca una '
+          'tarjeta para plegarla o desplegarla. Cada mes pasa por '
           'Abierto (reloj), Entregado (sobre: el papel ya está entregado) y '
           'Cobrado (✓); si hay meses sin entregar o entregados sin cobrar, '
           'te avisa. Toca un mes para ver su Hoja y cambiar el '
@@ -123,7 +123,7 @@ class HelpScreen extends StatelessWidget {
           '(hucha). Están en la pestaña «Horas guardadas» de Extra; en Resumen, '
           'la línea «Horas guardadas» enseña lo que hay y lo que valdría a tu '
           'tarifa normal de hoy, y al tocarla te lleva allí. Con «Añadir» '
-          'eliges uno de cuatro: «Horas de antes» (las que ya tenías, no tocan '
+          'eliges uno de estos: «Horas de antes» (las que ya tenías, no tocan '
           'ningún mes), «Apartar» (se restan de las horas normales del mes de la '
           'fecha, que debe estar Abierto), «Tiempo libre» (te las devuelven en '
           'días u horas libres; te recuerda la jornada de 39 h y el botón «Día '
@@ -131,6 +131,17 @@ class HelpScreen extends StatelessWidget {
           'fecha) o «Cobrar» (te las pagan a la tarifa normal de '
           'ese día; el importe queda fijo). No puedes sacar más de lo que hay. '
           'Su valor es posible, sin confirmar, y no se suma a ningún otro total.',
+    ),
+    (
+      'Cambiar horas por tiempo libre',
+      'Si te dan tiempo libre a cambio de horas de un mes y no quieres pasar '
+          'por un cajón, abre el mes en Resumen y toca «Cambiar horas por '
+          'tiempo libre» (o elige «Cambio por libre» al añadir en Horas '
+          'guardadas). Las horas se restan del mes de la fecha, igual que al '
+          'apartar, pero ningún cajón sube ni baja: suman en «Compensadas». '
+          'Puedes anotar el día libre, solo para recordarlo. En Resumen, cada '
+          'mes dice cuántas horas se apartaron o se cambiaron, y en Apuntar la '
+          'línea del dinero dice cuántas horas quedan fuera.',
     ),
     (
       'Vacaciones',
@@ -156,12 +167,13 @@ class HelpScreen extends StatelessWidget {
     (
       'Festivos',
       'Los sábados, los domingos y los festivos se proponen como «Festiva». '
-          'En Ajustes → «Festivos» activas o desactivas los de serie '
-          '(nacionales, regionales y locales; Jueves y Viernes Santo se calculan '
-          'solos) y añades los que falten. Si alguno no te corresponde, '
-          'desactívalo. Vienen cargados los años 2026 y 2027: a partir de '
-          '2028 hay que añadir los traslados y las fiestas locales que cambian de '
-          'fecha. Revísalos con el calendario laboral oficial. Los días ya apuntados no cambian.',
+          'En Ajustes → «Festivos» vienen los 10 nacionales (Viernes Santo se '
+          'calcula solo); si alguno no te corresponde, desactívalo. Los de tu '
+          'comunidad, los dos locales de tu municipio y los traslados los '
+          'añades tú en «Los míos»: cada año, si se repiten en la misma fecha, '
+          'o solo ese año, si cambian (como Jueves Santo). Búscalos en el '
+          'calendario laboral de tu comunidad y en la web de tu ayuntamiento. '
+          'Los días ya apuntados no cambian.',
     ),
     (
       'Motivo',
@@ -194,12 +206,31 @@ class HelpScreen extends StatelessWidget {
     (
       'Copias',
       'Para no perder tus horas, la app hace copias sola en una carpeta que '
-          'eliges tú (aviso «Elegir carpeta» o Ajustes → «Copias y exportación»). '
+          'eliges tú (Ajustes → «Copias y exportación»). '
           'Se hace una copia al salir de la app, si has cambiado algo desde la '
           'última. Guarda las 10 más recientes y nunca borra otros archivos de '
           'esa carpeta. Si una copia falla, aparece un aviso «No se ha podido '
           'hacer la copia» con el botón «Revisar». «Hacer copia ahora» la hace '
           'al momento.',
+    ),
+    (
+      'Primeros pasos',
+      'Al empezar, arriba de Resumen sale una tarjeta con lo que conviene '
+          'preparar: tus tarifas, tus vacaciones, los festivos de tu zona y '
+          'una copia. Toca cada línea para ir a su ajuste; se marca sola '
+          'cuando está hecho. Cuando están las cuatro, o si pulsas '
+          '«Ocultar», la tarjeta desaparece para siempre.',
+    ),
+    (
+      'Compartir copia',
+      'Si no quieres usar una carpeta, en Ajustes → «Copias y exportación» '
+          'pulsa «Compartir copia»: hace una copia completa y abre el menú '
+          'Compartir del móvil para guardarla en Google Drive, mandártela por '
+          'correo, etc. Para recuperarla: «Restaurar una copia» → «Elegir '
+          'otro archivo…» y elígela donde la guardaste (sin carpeta, solo con '
+          'la app vacía, como en un móvil nuevo). La app no sabe si llegaste '
+          'a guardarla: si no tienes carpeta, Apuntar te recuerda compartir '
+          'una copia cada 15 días.',
     ),
     (
       'Restaurar una copia',

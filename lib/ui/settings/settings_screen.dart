@@ -36,7 +36,11 @@ class SettingsScreen extends StatelessWidget {
     this.vacation,
     this.saves,
     this.clock,
+    this.onHolidaysOpened,
   });
+
+  /// Se abre Festivos: cuenta para «Primeros pasos» (024, RF-4).
+  final VoidCallback? onHolidaysOpened;
 
   final BackupService? backup;
   final HolidaysController? holidays;
@@ -45,9 +49,10 @@ class SettingsScreen extends StatelessWidget {
   final SaveWaiter? saves;
   final DateTime Function()? clock;
 
-  void _open(BuildContext context, Widget screen) =>
-      Navigator.of(context)
-          .push(MaterialPageRoute<void>(builder: (_) => screen));
+  void _open(BuildContext context, Widget screen) {
+    if (screen is HolidaysScreen) onHolidaysOpened?.call();
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +125,7 @@ class SettingsScreen extends StatelessWidget {
             tile(
               Icons.event_outlined,
               'Festivos',
-              'Nacionales, regionales, locales y los tuyos',
+              'Nacionales y los tuyos',
               HolidaysScreen(holidays: holidays, clock: clock),
             ),
           const _ThemePicker(),

@@ -52,6 +52,9 @@ abstract interface class BackupService implements Listenable {
   Future<String?> pickFile();
   Future<BackupOutcome> restoreFromFile(String path);
   Future<BackupOutcome> exportCsv();
+
+  /// Hace una copia completa y abre el menú «Compartir» con ella (023).
+  Future<BackupOutcome> shareBackup();
 }
 
 /// Lleva las copias: cuándo hacerlas, restaurar y exportar (RF-4 a RF-21).
@@ -394,6 +397,28 @@ class BackupController extends ChangeNotifier implements BackupService {
           ? name
           : '$name (no se ha podido guardar en la carpeta de copias)',
     );
+  });
+
+  // ---- Compartir copia (023) --------------------------------------------
+
+  /// Copia completa, comprobada como las automáticas (createBackupFile la lee
+  /// de vuelta), al menú «Compartir». No toca la carpeta ni «Última copia»
+  /// (RF-2 a RF-5).
+  @override
+  Future<BackupOutcome> shareBackup() => _guarded(() async {
+    final tmp = await _tempDir();
+    try {
+      final db = await openDatabase();
+      final local = p.join(tmp.path, 'copia-a-compartir.db');
+      await createBackupFile(db, local, factory: factory);
+      final bytes = await File(local).readAsBytes();
+      final name = backupFileName(_clock());
+      await storage.shareFile(name, 'application/octet-stream', bytes);
+      await _update(_settings.copyWith(lastShared: _clock));
+      return BackupOutcome.ok(name);
+    } finally {
+      await _deleteDir(tmp);
+    }
   });
 
   // ---- Utilidades -------------------------------------------------------

@@ -36,6 +36,7 @@ void main() {
     final db = await openAppDatabase(
       factory: factory,
       path: file,
+      version: 8,
       backupBeforeUpgrade: (_) async => copied = true,
     );
     expect(copied, isTrue);

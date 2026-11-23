@@ -378,4 +378,152 @@ void main() {
       expect(check(bigger, old: base), isNull);
     });
   });
+
+  group('cambio por libre (022)', () {
+    SavedMove swap(int hours, {DateTime? date, DateTime? dayOff, int? id}) =>
+        SavedMove(
+          id: id,
+          kind: SavedMoveKind.swap,
+          date: date ?? DateTime(2026, 11, 10),
+          minutes: hours * 60,
+          dayOff: dayOff,
+        );
+
+    test('no tiene cajón; los demás sí; solo él lleva día libre (RF-1)', () {
+      expect(swap(3).box, isNull);
+      expect(
+        () => SavedMove(
+          kind: SavedMoveKind.swap,
+          box: SavedBox.own,
+          date: DateTime(2026, 11, 10),
+          minutes: 60,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => SavedMove(
+          kind: SavedMoveKind.setAside,
+          date: DateTime(2026, 11, 10),
+          minutes: 60,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => SavedMove(
+          kind: SavedMoveKind.timeOff,
+          box: SavedBox.own,
+          date: DateTime(2026, 11, 10),
+          minutes: 60,
+          dayOff: DateTime(2026, 11, 20),
+        ),
+        throwsArgumentError,
+      );
+      expect(SavedMoveKind.swap.takesFromMonth, isTrue);
+      expect(SavedMoveKind.setAside.takesFromMonth, isTrue);
+      expect(SavedMoveKind.timeOff.takesFromMonth, isFalse);
+    });
+
+    test('no toca los cajones y suma en «Compensadas» (RF-3)', () {
+      final s = SavedSummary.of(
+        [
+          move(SavedBox.own, SavedMoveKind.before, 10),
+          swap(3),
+          move(SavedBox.own, SavedMoveKind.timeOff, 2),
+        ],
+        rates,
+        today,
+      );
+      expect(s.balances[SavedBox.own], 8 * 60);
+      expect(s.balances[SavedBox.company], 0);
+      expect(s.compensatedMinutes, 5 * 60);
+      expect(findSavedShortfall([swap(3)]), isNull);
+    });
+
+    test('el día libre va del 1-1-2020 al 31-12 del año siguiente (RF-4)', () {
+      SavedProblem? check(DateTime d) => validateSavedMove(
+        minutes: 60,
+        date: DateTime(2026, 11, 10),
+        today: today,
+        dayOff: d,
+      );
+      expect(check(DateTime(2027, 12, 31)), isNull);
+      expect(check(DateTime(2020)), isNull);
+      expect(check(DateTime(2028)), SavedProblem.dayOff);
+      expect(check(DateTime(2019, 12, 31)), SavedProblem.dayOff);
+      expect(
+        SavedProblem.dayOff.messageFor(today),
+        'El día libre debe estar entre el 1-1-2020 y el 31-12-2027.',
+      );
+    });
+
+    final entries = [
+      DayEntry(date: DateTime(2026, 11, 3), minutes: 600, kind: DayKind.normal),
+      DayEntry(date: DateTime(2026, 10, 3), minutes: 300, kind: DayKind.normal),
+    ];
+    final october = MonthRecord(
+      const YearMonth(2026, 10),
+      deliveredOn: DateTime(2026, 11, 2),
+    );
+    final apart = SavedMove(
+      id: 1,
+      box: SavedBox.own,
+      kind: SavedMoveKind.setAside,
+      date: DateTime(2026, 11, 4),
+      minutes: 4 * 60,
+    );
+    String? check(SavedMove? m, {SavedMove? old, List<SavedMove>? all}) =>
+        checkSavedMove(
+          move: m,
+          old: old,
+          all: all ?? [apart],
+          entries: entries,
+          rates: rates,
+          records: [october],
+        );
+
+    test('mismas reglas que un apartado y cuentan juntos (RF-2)', () {
+      expect(check(swap(6)), isNull);
+      expect(check(swap(7)), SetAsideProblem.tooMany.message);
+      expect(
+        check(swap(1, date: DateTime(2026, 10, 5))),
+        SetAsideProblem.notOpen.message,
+      );
+      final old = swap(1, id: 2, date: DateTime(2026, 10, 5));
+      expect(
+        check(null, old: old, all: [apart, old]),
+        SetAsideProblem.notOpen.message,
+      );
+    });
+
+    test('cambiar solo el día libre o la nota siempre se puede (RF-5)', () {
+      final old = swap(1, id: 2, date: DateTime(2026, 10, 5));
+      final edited = swap(
+        1,
+        id: 2,
+        date: DateTime(2026, 10, 5),
+        dayOff: DateTime(2026, 12, 1),
+      );
+      expect(check(edited, old: old, all: [apart, old]), isNull);
+    });
+
+    test('resta del mes con su importe, como un apartado (RF-2, RF-10)', () {
+      final o = MoneyOverview.compute(
+        entries: entries,
+        rates: rates,
+        records: const [],
+        savedMoves: [apart, swap(3)],
+      );
+      final nov = o.months.firstWhere(
+        (l) => l.month == const YearMonth(2026, 11),
+      );
+      expect(nov.minutes, 3 * 60);
+      expect(nov.amountCents, 4500);
+      expect(nov.setAsideMinutes, 7 * 60);
+      expect(nov.boxedMinutes, 4 * 60);
+      expect(nov.swappedMinutes, 3 * 60);
+      expect(monthsShortOfSetAside(entries, [swap(11)]), [
+        const YearMonth(2026, 11),
+      ]);
+    });
+  });
 }

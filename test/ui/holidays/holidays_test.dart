@@ -181,7 +181,12 @@ void main() {
       expect(find.text('Año Nuevo'), findsOneWidget);
       expect(find.text('1 de enero'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('Los míos'), 200);
-      expect(find.text('Regionales y locales'), findsOneWidget);
+      // Sin autonómicos ni locales de serie: se añaden en «Los míos».
+      expect(find.text('Regionales y locales'), findsNothing);
+      expect(
+        find.byTooltip('Más información: Festivos de tu zona'),
+        findsOneWidget,
+      );
       await tester.scrollUntilVisible(find.text('Viernes Santo'), -200);
       expect(
         find.text('Cambia cada año · en 2026: 3 de abril'),
@@ -234,12 +239,9 @@ void main() {
               tester,
               width: width,
               scale: scale,
-              now: DateTime(2026, 12, 7),
+              now: DateTime(2026, 12, 8),
             );
-            expect(
-              find.textContaining('Festivo: Constitución (trasladada)'),
-              findsOneWidget,
-            );
+            expect(find.textContaining('Festivo: Inmaculada'), findsOneWidget);
             await _openHolidays(tester);
             await tester.scrollUntilVisible(find.text('Añadir festivo'), 300);
             await tester.drag(find.byType(ListView), const Offset(0, -300));

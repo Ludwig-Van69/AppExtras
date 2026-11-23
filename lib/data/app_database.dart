@@ -5,7 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 /// Versión del formato de los datos. Si cambia, hace falta una migración
 /// probada y una copia previa (constitución, principio 3).
-const databaseVersion = 8;
+const databaseVersion = 9;
 
 /// Nombre del archivo, dentro de la carpeta privada de la app.
 const databaseFileName = 'horas.db';
@@ -61,6 +61,7 @@ Future<Database> openAppDatabase({
         if (version >= 6) await createSchemaV6(db);
         if (version >= 7) await createSchemaV7(db);
         if (version >= 8) await createSchemaV8(db);
+        if (version >= 9) await createSchemaV9(db);
       },
       // Cada salto de versión va aquí, con su test.
       onUpgrade: (db, from, to) async {
@@ -71,6 +72,7 @@ Future<Database> openAppDatabase({
         if (from < 6 && to >= 6) await createSchemaV6(db);
         if (from < 7 && to >= 7) await createSchemaV7(db);
         if (from < 8 && to >= 8) await createSchemaV8(db);
+        if (from < 9 && to >= 9) await createSchemaV9(db);
       },
       onDowngrade: (db, from, to) => throw StateError(
         'Los datos son de una versión más nueva de la app ($from) que '
@@ -218,4 +220,34 @@ Future<void> createSchemaV8(DatabaseExecutor db) async {
     'ALTER TABLE extras ADD COLUMN company_pays INTEGER NOT NULL DEFAULT 0 '
     'CHECK (company_pays IN (0, 1))',
   );
+}
+
+/// Formato v9 (022): el cambio por libre, sin cajón y con un día libre
+/// opcional. SQLite no deja cambiar las comprobaciones de una tabla, así
+/// que se rehace `saved_moves` copiando todos sus movimientos tal cual.
+Future<void> createSchemaV9(DatabaseExecutor db) async {
+  await db.execute('''
+CREATE TABLE saved_moves_v9 (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  box TEXT CHECK (box IS NULL OR box IN ('company', 'own')),
+  kind TEXT NOT NULL
+    CHECK (kind IN ('before', 'setAside', 'timeOff', 'paid', 'swap')),
+  date TEXT NOT NULL
+    CHECK (date GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'),
+  minutes INTEGER NOT NULL
+    CHECK (minutes BETWEEN 30 AND 59940 AND minutes % 30 = 0),
+  note TEXT CHECK (note IS NULL OR length(note) BETWEEN 1 AND 60),
+  cents INTEGER CHECK (cents IS NULL OR cents BETWEEN 0 AND 100000000),
+  day_off TEXT CHECK (day_off IS NULL OR
+    day_off GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'),
+  CHECK ((kind = 'paid') = (cents IS NOT NULL)),
+  CHECK ((kind = 'swap') = (box IS NULL)),
+  CHECK (day_off IS NULL OR kind = 'swap')
+)''');
+  await db.execute(
+    'INSERT INTO saved_moves_v9 (id, box, kind, date, minutes, note, cents) '
+    'SELECT id, box, kind, date, minutes, note, cents FROM saved_moves',
+  );
+  await db.execute('DROP TABLE saved_moves');
+  await db.execute('ALTER TABLE saved_moves_v9 RENAME TO saved_moves');
 }

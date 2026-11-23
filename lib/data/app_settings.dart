@@ -15,6 +15,7 @@ class BackupSettings {
     this.lastSuccess,
     this.lastError,
     this.dirty = true,
+    this.lastShared,
   });
 
   /// Dirección de la carpeta elegida (la da el selector de Android); nula si
@@ -32,16 +33,35 @@ class BackupSettings {
   /// sí: ante la duda, se copia.
   final bool dirty;
 
+  /// Cuándo se abrió por última vez el menú «Compartir» con una copia (023,
+  /// RF-4). No se sabe si el usuario llegó a guardarla.
+  final DateTime? lastShared;
+
+  /// Días sin compartir a partir de los que se recuerda hacerlo (023, RF-7).
+  static const shareReminderDays = 15;
+
+  /// Qué aviso de copia toca sin carpeta (023, RF-6 a RF-9).
+  ShareReminder shareReminder(DateTime now) {
+    if (folder != null) return ShareReminder.none;
+    final shared = lastShared;
+    if (shared == null) return ShareReminder.never;
+    return now.difference(shared).inDays >= shareReminderDays
+        ? ShareReminder.overdue
+        : ShareReminder.none;
+  }
+
   BackupSettings copyWith({
     String? Function()? folder,
     DateTime? Function()? lastSuccess,
     String? Function()? lastError,
     bool? dirty,
+    DateTime? Function()? lastShared,
   }) => BackupSettings(
     folder: folder == null ? this.folder : folder(),
     lastSuccess: lastSuccess == null ? this.lastSuccess : lastSuccess(),
     lastError: lastError == null ? this.lastError : lastError(),
     dirty: dirty ?? this.dirty,
+    lastShared: lastShared == null ? this.lastShared : lastShared(),
   );
 
   Map<String, Object?> toJson() => {
@@ -50,6 +70,7 @@ class BackupSettings {
     'lastSuccess': lastSuccess?.toUtc().toIso8601String(),
     'lastError': lastError,
     'dirty': dirty,
+    'lastShared': lastShared?.toUtc().toIso8601String(),
   };
 
   /// Lee con tolerancia: un dato que falta o no encaja se queda en su valor
@@ -59,6 +80,7 @@ class BackupSettings {
     final success = json['lastSuccess'];
     final error = json['lastError'];
     final dirty = json['dirty'];
+    final shared = json['lastShared'];
     return BackupSettings(
       folder: folder is String && folder.isNotEmpty ? folder : null,
       lastSuccess: success is String
@@ -66,6 +88,9 @@ class BackupSettings {
           : null,
       lastError: error is String && error.isNotEmpty ? error : null,
       dirty: dirty is bool ? dirty : true,
+      lastShared: shared is String
+          ? DateTime.tryParse(shared)?.toLocal()
+          : null,
     );
   }
 
@@ -75,10 +100,24 @@ class BackupSettings {
       other.folder == folder &&
       other.lastSuccess == lastSuccess &&
       other.lastError == lastError &&
-      other.dirty == dirty;
+      other.dirty == dirty &&
+      other.lastShared == lastShared;
 
   @override
-  int get hashCode => Object.hash(folder, lastSuccess, lastError, dirty);
+  int get hashCode =>
+      Object.hash(folder, lastSuccess, lastError, dirty, lastShared);
+}
+
+/// Aviso de copia en Apuntar cuando no hay carpeta (023, RF-6 a RF-9).
+enum ShareReminder {
+  /// Ninguno: hay carpeta o se compartió hace poco.
+  none,
+
+  /// Nunca se ha guardado ni compartido una copia.
+  never,
+
+  /// La última copia compartida tiene 15 días o más.
+  overdue,
 }
 
 /// Guarda y lee los ajustes en un archivo JSON.

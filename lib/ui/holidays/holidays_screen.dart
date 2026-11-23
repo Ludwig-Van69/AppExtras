@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/holidays.dart';
+import '../components/info_button.dart';
 import '../format.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
@@ -87,12 +88,30 @@ class HolidaysScreen extends StatelessWidget {
                 ),
               header('Nacionales'),
               for (final h in group(HolidayGroup.national)) _tile(h, cal),
-              header('Regionales y locales'),
-              for (final h in group(HolidayGroup.regional)) _tile(h, cal),
-              header('Los míos'),
+              Row(
+                children: [
+                  Expanded(child: header('Los míos')),
+                  const Padding(
+                    padding: EdgeInsets.only(top: Space.l),
+                    child: InfoButton(
+                      title: 'Festivos de tu zona',
+                      text:
+                          'Solo vienen los festivos nacionales. Añade aquí los '
+                          'de tu comunidad autónoma y los dos locales de tu '
+                          'municipio: los encontrarás en el calendario '
+                          'laboral de tu comunidad y en la web de tu '
+                          'ayuntamiento. Añade también los traslados (por '
+                          'ejemplo, un festivo que cae en domingo y se pasa '
+                          'al lunes). Los que cambian de fecha, como Jueves '
+                          'Santo o una fiesta local, se añaden cada año como '
+                          '«solo ese año».',
+                    ),
+                  ),
+                ],
+              ),
               if (mine.isEmpty)
                 Text(
-                  'Aquí puedes añadir los festivos que falten.',
+                  'Añade los de tu comunidad y tu municipio.',
                   style: AppText.body.copyWith(color: c.textSoft),
                 ),
               for (final h in mine) _tile(h, cal),

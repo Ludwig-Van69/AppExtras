@@ -79,7 +79,12 @@ class Mosaic extends StatefulWidget {
     this.onLongPress,
     this.tileHeight = Sizes.tile,
     this.markOf,
+    this.minWeeks = 0,
   });
+
+  /// Filas mínimas: las que falten se dejan en blanco para que el alto no
+  /// cambie de un mes a otro (un mes ocupa de 4 a 6 semanas).
+  final int minWeeks;
 
   /// Detalle de temporada de cada día, o nulo (013, RF-9).
   final DayMark? Function(DateTime date)? markOf;
@@ -152,7 +157,10 @@ class _MosaicState extends State<Mosaic> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final weeks = Mosaic.weeksOf(widget.days);
+    final weeks = [...Mosaic.weeksOf(widget.days)];
+    while (weeks.length < widget.minWeeks) {
+      weeks.add(List<MosaicDay?>.filled(7, null));
+    }
     final diagonals = weeks.length + 6;
     final tappable = widget.onTap != null;
 

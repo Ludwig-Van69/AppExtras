@@ -114,6 +114,9 @@ Future<void> _tapAdd(WidgetTester tester) async {
         )
         .first,
   );
+  // Que se vea entero: si asoma solo un poco, el toque no le llega.
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
   await tester.tap(button);
 }
 
@@ -510,6 +513,16 @@ void main() {
           // Con el recordatorio y el botón de la jornada (020).
           await tester.tap(find.text('Tiempo libre'));
           await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.byKey(const ValueKey('dia-completo')),
+            100,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ListView).last,
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
           expect(find.byKey(const ValueKey('dia-completo')), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
@@ -654,7 +667,7 @@ void main() {
 
     testWidgets('10 h a 15 € menos 3 apartadas: 105,00 €', (tester) async {
       await openLog(tester);
-      expect(text(tester), 'A cobrar este mes: 105,00 €');
+      expect(text(tester), 'A cobrar este mes · 3 h fuera: 105,00 €');
       expect(find.text('105,00 €'), findsOneWidget);
     });
 
@@ -690,10 +703,10 @@ void main() {
       await openLog(tester);
       await _doubleTap(tester, find.bySemanticsLabel('Apuntar 2 horas'));
       await tester.pumpAndSettle();
-      expect(text(tester), 'A cobrar este mes: 135,00 €');
+      expect(text(tester), 'A cobrar este mes · 3 h fuera: 135,00 €');
       await money.toggleHideAmounts();
       await tester.pumpAndSettle();
-      expect(text(tester), 'A cobrar este mes: •••• €');
+      expect(text(tester), 'A cobrar este mes · 3 h fuera: •••• €');
     });
 
     testWidgets('sin tarifa lo avisa; un mes sin horas da 0,00 €', (
@@ -718,7 +731,108 @@ void main() {
         date: DateTime(2026, 11, 18),
       );
       await tester.pumpAndSettle();
-      expect(text(tester), 'Cobrado este mes: 105,00 €');
+      expect(text(tester), 'Cobrado este mes · 3 h fuera: 105,00 €');
+    });
+  });
+
+  group('cambio por libre (022)', () {
+    final nov3 = DayEntry(
+      date: DateTime(2026, 11, 3),
+      minutes: 600,
+      kind: DayKind.normal,
+    );
+
+    testWidgets('desde la Hoja del mes, sin cajón; Resumen lo dice '
+        '(RF-7 a RF-10, RF-12)', (tester) async {
+      calmAnimations(tester);
+      await tester.binding.setSurfaceSize(const Size(390, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await _makeMoney(
+        entries: [nov3],
+        moves: [
+          _before(SavedBox.own, 10),
+          SavedMove(
+            box: SavedBox.own,
+            kind: SavedMoveKind.setAside,
+            date: DateTime(2026, 11, 4),
+            minutes: 120,
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        HoursAndVacationApp(repository: days, money: money, clock: () => _now),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Resumen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Noviembre 2026'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('cambiar-por-libre')));
+      await tester.pumpAndSettle();
+      expect(find.text('Cajón'), findsNothing);
+      expect(find.text('Fecha: 18 de noviembre de 2026'), findsOneWidget);
+      expect(find.text('Día libre (opcional)'), findsOneWidget);
+      await _type(tester, 'Horas', '3');
+      await _tapAdd(tester);
+      await tester.pumpAndSettle();
+
+      // De vuelta en la Hoja: las dos líneas y 10 − 2 − 3 = 5 h.
+      expect(find.text('Apartadas a Mi reserva: −2 h'), findsOneWidget);
+      expect(find.text('Cambiadas por tiempo libre: −3 h'), findsOneWidget);
+      expect(find.text('−45,00 €'), findsOneWidget);
+      expect(find.text('5 h'), findsOneWidget);
+      // Los cajones no cambian y «Compensadas» lo cuenta.
+      expect(money.savedSummary.balances[SavedBox.own], 12 * 60);
+      expect(money.savedSummary.compensatedMinutes, 180);
+
+      await tester.tap(find.byTooltip('Atrás'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('5 h · 2 h apartadas · 3 h a tiempo libre'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('un mes entregado no ofrece el botón', (tester) async {
+      calmAnimations(tester);
+      await _makeMoney(entries: [nov3]);
+      await money.setStatus(const YearMonth(2026, 11), MonthStatus.delivered);
+      await tester.pumpWidget(
+        HoursAndVacationApp(repository: days, money: money, clock: () => _now),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Resumen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Noviembre 2026'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('cambiar-por-libre')), findsNothing);
+    });
+
+    testWidgets('en la lista: sin cajón y con su día libre (RF-12); el día '
+        'libre se quita (RF-8)', (tester) async {
+      await _open(
+        tester,
+        entries: [nov3],
+        moves: [
+          SavedMove(
+            id: 1,
+            kind: SavedMoveKind.swap,
+            date: DateTime(2026, 11, 10),
+            minutes: 180,
+            dayOff: DateTime(2026, 12, 7),
+          ),
+        ],
+      );
+      expect(find.text('Cambio por libre'), findsOneWidget);
+      expect(find.text('10 nov 2026 · libre el 7 dic 2026'), findsOneWidget);
+      expect(find.text('−3 h'), findsOneWidget);
+      await tester.tap(find.text('Cambio por libre'));
+      await tester.pumpAndSettle();
+      expect(find.text('Día libre: 7 de diciembre de 2026'), findsOneWidget);
+      await tester.tap(find.byTooltip('Quitar el día libre'));
+      await tester.pumpAndSettle();
+      expect(money.savedMoves.single.dayOff, isNull);
     });
   });
 }

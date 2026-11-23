@@ -144,6 +144,13 @@ void main() {
             cents: 3750,
           ),
           SavedMove(
+            kind: SavedMoveKind.swap,
+            date: DateTime(2026, 11, 10),
+            minutes: 180,
+            note: 'Puente',
+            dayOff: DateTime(2026, 12, 7),
+          ),
+          SavedMove(
             box: SavedBox.company,
             kind: SavedMoveKind.before,
             date: DateTime(2025, 1, 1),
@@ -154,10 +161,12 @@ void main() {
       );
       expect(csv.split('\r\n').skip(2), [
         '',
-        'Fecha;Cajón;Movimiento;Horas;Minutos;Importe cobrado (€);Nota',
+        'Fecha;Cajón;Movimiento;Horas;Minutos;Importe cobrado (€);Nota;'
+            'Día libre',
         '01/01/2025;Bolsa de empresa;Horas de antes;16;960;;'
-            '"De otros años; sin fecha"',
-        '10/11/2026;Mi reserva;Cobrar;-2,5;-150;37,50;',
+            '"De otros años; sin fecha";',
+        '10/11/2026;Mi reserva;Cobrar;-2,5;-150;37,50;;',
+        '10/11/2026;;Cambio por libre;-3;-180;;Puente;07/12/2026',
         '',
       ]);
     });

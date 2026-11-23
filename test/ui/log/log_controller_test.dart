@@ -434,6 +434,28 @@ void main() {
       );
     });
 
+    test('con cambios por libre, el aviso los nombra (022, RF-6)', () async {
+      final swap = SavedMove(
+        kind: SavedMoveKind.swap,
+        date: DateTime(2026, 11, 4),
+        minutes: 7 * 60,
+      );
+      await startWith([swap]);
+      c.setMinutes(90);
+      await c.idle;
+      expect(blocked, [
+        'Has cambiado 7 h de este mes por tiempo libre. Quita antes ese '
+            'cambio.',
+      ]);
+      await startWith([apart(4), swap]);
+      c.setMinutes(90);
+      await c.idle;
+      expect(blocked, [
+        'Has sacado 11 h de este mes a Mi reserva y a tiempo libre. Quita '
+            'antes esos movimientos.',
+      ]);
+    });
+
     test('subir horas o tocar otro mes no se frena', () async {
       await startWith([apart(10)]);
       c.setMinutes(360);

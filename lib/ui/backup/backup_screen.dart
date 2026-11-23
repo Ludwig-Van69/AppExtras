@@ -18,6 +18,16 @@ const _syncthingText =
     'nada de lo del ordenador pueda cambiar las copias. Hay más detalle en '
     'Ayuda.';
 
+const _shareTitle = 'Compartir copia';
+const _shareText =
+    'Hace una copia completa de tus datos y abre el menú «Compartir» del '
+    'móvil para que la guardes donde quieras: en Google Drive, en tu correo, '
+    'en WhatsApp… Para recuperarla, en «Restaurar una copia» pulsa «Elegir '
+    'otro archivo…» y búscala donde la guardaste. Sin carpeta de copias, '
+    'solo se puede restaurar con la app vacía (por ejemplo, en un móvil '
+    'nuevo). La app no sabe si llegaste a guardarla: te lo recordará a los '
+    '15 días.';
+
 void _say(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -178,6 +188,36 @@ class BackupScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: Space.l),
+              // 023, RF-1 y RF-10.
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('compartir-copia'),
+                      onPressed: busy
+                          ? null
+                          : () => _run(
+                              context,
+                              backup.shareBackup,
+                              'Listo: elige dónde guardar la copia.',
+                            ),
+                      icon: const Icon(Icons.share_outlined),
+                      label: const Text('Compartir copia'),
+                    ),
+                  ),
+                  const InfoButton(title: _shareTitle, text: _shareText),
+                ],
+              ),
+              if (s.lastShared != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.xs),
+                  child: Text(
+                    'Última copia compartida: '
+                    '${backupMoment(s.lastShared!, now: _now)}',
+                    style: AppText.label.copyWith(color: c.textSoft),
+                  ),
+                ),
               const SizedBox(height: Space.l),
               SizedBox(
                 width: double.infinity,

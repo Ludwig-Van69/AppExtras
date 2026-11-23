@@ -152,4 +152,30 @@ void main() {
         .reduce((a, b) => a > b ? a : b);
     expect(scale, 1.0);
   });
+
+  testWidgets('con minWeeks, un mes de 4 semanas mide lo mismo que uno de 6 '
+      '(el calendario de «Otro día» no cambia de alto)', (tester) async {
+    Future<Size> sizeOf(List<MosaicDay> days) async {
+      await tester.pumpWidget(
+        testApp(
+          Mosaic(
+            key: UniqueKey(),
+            days: days,
+            minWeeks: 6,
+            showLegend: false,
+            onTap: (_) {},
+          ),
+        ),
+      );
+      return tester.getSize(find.byType(Mosaic));
+    }
+
+    // Noviembre de 2026 ocupa 6 semanas; febrero de 2027, solo 4.
+    final nov = await sizeOf(_days(30));
+    final feb = await sizeOf([
+      for (var d = 1; d <= 28; d++) MosaicDay(DateTime(2027, 2, d)),
+    ]);
+    expect(Mosaic.weeksOf(_days(30)).length, 6);
+    expect(feb.height, nov.height);
+  });
 }

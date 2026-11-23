@@ -9,6 +9,7 @@ import '../components/roll_switcher.dart';
 import '../components/state_message.dart';
 import '../extras/extras_controller.dart';
 import '../format.dart';
+import '../saved/saved_hours_view.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -86,7 +87,12 @@ class MoneyScreen extends StatelessWidget {
     this.vacation,
     this.onOpenVacation,
     this.actions = const [],
+    this.header,
   });
+
+  /// Lo que va arriba del todo, antes de «A cobrar»: la tarjeta «Primeros
+  /// pasos» (024, RF-1).
+  final Widget? header;
 
   final MoneyController money;
   final ExtrasController? extras;
@@ -148,6 +154,7 @@ class MoneyScreen extends StatelessWidget {
             onOpenSaved: onOpenSaved,
             vacation: vacation,
             onOpenVacation: onOpenVacation,
+            header: header,
           ),
         },
       ),
@@ -163,7 +170,9 @@ class _Ready extends StatelessWidget {
     this.onOpenSaved,
     this.vacation,
     this.onOpenVacation,
+    this.header,
   });
+  final Widget? header;
   final VacationController? vacation;
   final VoidCallback? onOpenVacation;
   final MoneyController money;
@@ -186,6 +195,7 @@ class _Ready extends StatelessWidget {
         Space.xxxl,
       ),
       children: [
+        ?header,
         Text('A cobrar', style: AppText.label.copyWith(color: c.textSoft)),
         // «51 h = 765,00 €» (018, RF-1).
         _RollingTotal(
@@ -301,18 +311,17 @@ class _Ready extends StatelessWidget {
             'Aún no hay horas apuntadas.',
             style: AppText.body.copyWith(color: c.textSoft),
           ),
-        // El año en curso, desplegado; los anteriores, plegados (018, RF-5).
+        // Cada año en su tarjeta: el actual, desplegado; los anteriores,
+        // plegados (018, RF-5).
         for (final (year, months) in _byYear(o.months))
-          if (year >= money.today.year)
-            for (final m in months) _monthTile(context, m)
-          else
-            _YearCard(
-              key: ValueKey('año-$year'),
-              money: money,
-              year: year,
-              months: months,
-              tile: (m) => _monthTile(context, m),
-            ),
+          _YearCard(
+            key: ValueKey('año-$year'),
+            money: money,
+            year: year,
+            months: months,
+            startOpen: year >= money.today.year,
+            tile: (m) => _monthTile(context, m),
+          ),
       ],
     );
   }
@@ -340,6 +349,7 @@ extension on _Ready {
             FadeSwap(value: m.status, child: _StatusTag(m.status)),
             Text(
               '${formatMinutes(m.minutes)} h'
+              '${outOfMonthText(m)}'
               '${m.isComplete ? '' : ' · falta tarifa'}',
               style: AppText.body.copyWith(
                 color: m.status == MonthStatus.paid ? c.textSoft : c.text,
@@ -395,8 +405,8 @@ List<(int, List<MonthLine>)> _byYear(List<MonthLine> months) {
   return out;
 }
 
-/// Un año anterior plegado con su resumen; al tocarlo se despliega (018,
-/// RF-5). Que esté desplegado no se guarda.
+/// Un año con su resumen; al tocarlo se pliega o se despliega (018, RF-5).
+/// Empieza abierto si [startOpen] (el año en curso). No se guarda.
 class _YearCard extends StatefulWidget {
   const _YearCard({
     super.key,
@@ -404,7 +414,9 @@ class _YearCard extends StatefulWidget {
     required this.year,
     required this.months,
     required this.tile,
+    this.startOpen = false,
   });
+  final bool startOpen;
   final MoneyController money;
   final int year;
   final List<MonthLine> months;
@@ -415,17 +427,14 @@ class _YearCard extends StatefulWidget {
 }
 
 class _YearCardState extends State<_YearCard> {
-  var _open = false;
+  late var _open = widget.startOpen;
 
   /// Los meses del año, si está abierta; aparecen con un fundido.
   Widget? _monthsOf(BuildContext context) => !_open
       ? null
       : AppearOnce(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.m),
-            child: Column(
-              children: [for (final m in widget.months) widget.tile(m)],
-            ),
+          child: Column(
+            children: [for (final m in widget.months) widget.tile(m)],
           ),
         );
 
@@ -441,16 +450,18 @@ class _YearCardState extends State<_YearCard> {
         : unpaid == 1
         ? '1 mes sin cobrar'
         : '$unpaid meses sin cobrar';
+    // La tarjeta es la cabecera; los meses van debajo, a todo lo ancho, para
+    // que quepan en móviles estrechos con letra grande.
     return Padding(
       padding: const EdgeInsets.only(top: Space.s),
-      child: Material(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(Radii.medium),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Semantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(Radii.medium),
+            clipBehavior: Clip.antiAlias,
+            child: Semantics(
               expanded: _open,
               child: InkWell(
                 onTap: () => setState(() => _open = !_open),
@@ -492,23 +503,22 @@ class _YearCardState extends State<_YearCard> {
                 ),
               ),
             ),
-            // Crece hasta su altura y los meses aparecen a la vez; al cerrar,
-            // se encoge sin esperar (018; bloque G).
-            // Con las animaciones reducidas no hay crecimiento (y AnimatedSize
-            // con duración cero falla al medirse).
-            if (context.motion(Motion.expand) == Duration.zero)
-              ?_monthsOf(context)
-            else
-              AnimatedSize(
-                duration: Motion.expand,
-                curve: Motion.easeOut,
-                alignment: Alignment.topCenter,
-                child:
-                    _monthsOf(context) ??
-                    const SizedBox(width: double.infinity),
-              ),
-          ],
-        ),
+          ),
+          // Crece hasta su altura y los meses aparecen a la vez; al cerrar,
+          // se encoge sin esperar (018; bloque G).
+          // Con las animaciones reducidas no hay crecimiento (y AnimatedSize
+          // con duración cero falla al medirse).
+          if (context.motion(Motion.expand) == Duration.zero)
+            ?_monthsOf(context)
+          else
+            AnimatedSize(
+              duration: Motion.expand,
+              curve: Motion.easeOut,
+              alignment: Alignment.topCenter,
+              child:
+                  _monthsOf(context) ?? const SizedBox(width: double.infinity),
+            ),
+        ],
       ),
     );
   }
@@ -851,9 +861,25 @@ class MonthScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-              for (final b in SavedBox.values)
+              for (final b in [...SavedBox.values, null])
                 if (line.setAside.any((s) => s.move.box == b))
                   _setAsideRow(context, line, b),
+              if (line.status == MonthStatus.open)
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.s),
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('cambiar-por-libre'),
+                    onPressed: () => openSavedMove(
+                      context,
+                      money,
+                      null,
+                      SavedMoveKind.swap,
+                      _swapDate(),
+                    ),
+                    icon: const Icon(Icons.beach_access_outlined),
+                    label: const Text('Cambiar horas por tiempo libre'),
+                  ),
+                ),
               const Divider(height: Space.xxl),
               if (line.imported != null) ...[
                 // Mes del Excel: solo su total, sin días (016, RF-5).
@@ -904,8 +930,17 @@ class MonthScreen extends StatelessWidget {
     );
   }
 
-  /// «Apartadas a Mi reserva · 3 h   −45,00 €» (008, RF-5).
-  Widget _setAsideRow(BuildContext context, MonthLine line, SavedBox box) {
+  /// Fecha con que empieza un cambio por libre: hoy si es este mes; si no,
+  /// el último día del mes (022, RF-7).
+  DateTime _swapDate() {
+    final today = money.today;
+    final last = DateTime(month.year, month.month + 1, 0);
+    return last.isAfter(today) ? today : last;
+  }
+
+  /// «Apartadas a Mi reserva · 3 h   −45,00 €» (008, RF-5), o «Cambiadas
+  /// por tiempo libre» si [box] es nulo (022, RF-10).
+  Widget _setAsideRow(BuildContext context, MonthLine line, SavedBox? box) {
     final c = context.colors;
     final mine = line.setAside.where((s) => s.move.box == box);
     final minutes = mine.fold(0, (sum, s) => sum + s.move.minutes);
@@ -925,7 +960,8 @@ class MonthScreen extends StatelessWidget {
           const SizedBox(width: Space.s),
           Expanded(
             child: Text(
-              'Apartadas a ${box.label}: −${formatMinutes(minutes)} h',
+              '${box == null ? 'Cambiadas por tiempo libre' : 'Apartadas a ${box.label}'}: '
+              '−${formatMinutes(minutes)} h',
               style: AppText.bodyStrong,
             ),
           ),
@@ -1089,3 +1125,11 @@ class _RollingTotalState extends State<_RollingTotal> {
     child: widget.child,
   );
 }
+
+/// « · 3 h apartadas · 2 h a tiempo libre» tras las horas de un mes, o nada
+/// si no sale ninguna (022, RF-9).
+String outOfMonthText(MonthLine m) => [
+  if (m.boxedMinutes > 0) ' · ${formatMinutes(m.boxedMinutes)} h apartadas',
+  if (m.swappedMinutes > 0)
+    ' · ${formatMinutes(m.swappedMinutes)} h a tiempo libre',
+].join();

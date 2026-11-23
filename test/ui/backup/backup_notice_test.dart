@@ -4,6 +4,7 @@ import 'package:horas_y_vacaciones/data/app_settings.dart';
 import 'package:horas_y_vacaciones/domain/day_entry.dart';
 import 'package:horas_y_vacaciones/domain/day_kind.dart';
 import 'package:horas_y_vacaciones/ui/app.dart';
+import 'package:horas_y_vacaciones/ui/backup/backup_controller.dart';
 import 'package:horas_y_vacaciones/ui/backup/backup_notice.dart';
 
 import '../../fakes/fake_backup_service.dart';
@@ -58,25 +59,68 @@ const _good = BackupSettings(folder: _folder, dirty: false);
 
 void main() {
   group('avisos bajo el motivo', () {
-    testWidgets('sin carpeta: aviso con «Elegir carpeta» (RF-3)', (
-      tester,
-    ) async {
+    testWidgets('sin carpeta ni copia compartida: «Hacer copia» lleva a '
+        'Copias (023, RF-6)', (tester) async {
       await _open(tester);
       expect(find.text('Tus horas aún no tienen copia'), findsOneWidget);
-      await tester.tap(find.text('Elegir carpeta'));
+      await tester.tap(find.text('Hacer copia'));
       await tester.pumpAndSettle();
-      expect(backup.calls, ['chooseFolder']);
-      // Al resolverse, desaparece.
+      expect(find.text('Copias y exportación'), findsOneWidget);
+      expect(find.text('Compartir copia'), findsOneWidget);
+      // Al compartir desde allí, el aviso desaparece.
+      await tester.tap(find.text('Compartir copia'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Atrás'));
+      await tester.pumpAndSettle();
       expect(find.text('Tus horas aún no tienen copia'), findsNothing);
       expect(find.byType(BackupNotice), findsOneWidget);
     });
 
-    testWidgets('si elegir carpeta se cancela, el aviso sigue', (tester) async {
-      await _open(tester);
-      backup.folderToPick = null;
-      await tester.tap(find.text('Elegir carpeta'));
+    testWidgets('compartida hace menos de 15 días: sin aviso (RF-8)', (
+      tester,
+    ) async {
+      await _open(
+        tester,
+        settings: BackupSettings(lastShared: DateTime(2026, 10, 23, 19)),
+      );
+      expect(find.text('Tus horas aún no tienen copia'), findsNothing);
+      expect(find.textContaining('que no guardas una copia'), findsNothing);
+    });
+
+    testWidgets('compartida hace 15 días o más: recuerda y comparte '
+        '(RF-7)', (tester) async {
+      await _open(
+        tester,
+        settings: BackupSettings(lastShared: DateTime(2026, 10, 22, 18)),
+      );
+      expect(
+        find.text('Hace más de 15 días que no guardas una copia'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Compartir copia'));
       await tester.pumpAndSettle();
-      expect(find.text('Tus horas aún no tienen copia'), findsOneWidget);
+      expect(backup.calls, contains('shareBackup'));
+      expect(find.textContaining('que no guardas una copia'), findsNothing);
+    });
+
+    testWidgets('si compartir falla, lo dice y el aviso sigue', (tester) async {
+      await _open(
+        tester,
+        settings: BackupSettings(lastShared: DateTime(2026, 10, 1)),
+      );
+      backup.shareResult = const BackupOutcome.fail('No se ha podido.');
+      await tester.tap(find.text('Compartir copia'));
+      await tester.pumpAndSettle();
+      expect(find.text('No se ha podido.'), findsOneWidget);
+      expect(find.textContaining('que no guardas una copia'), findsOneWidget);
+    });
+
+    testWidgets('con carpeta no recuerda compartir (RF-9)', (tester) async {
+      await _open(
+        tester,
+        settings: _good.copyWith(lastShared: () => DateTime(2025)),
+      );
+      expect(find.textContaining('que no guardas una copia'), findsNothing);
     });
 
     testWidgets(
@@ -101,7 +145,7 @@ void main() {
       await _open(tester, settings: _good);
       expect(find.text('Tus horas aún no tienen copia'), findsNothing);
       expect(find.text('No se ha podido hacer la copia'), findsNothing);
-      expect(find.text('Elegir carpeta'), findsNothing);
+      expect(find.text('Hacer copia'), findsNothing);
       expect(find.text('Revisar'), findsNothing);
     });
 
@@ -121,7 +165,7 @@ void main() {
       ) async {
         await _open(tester, width: width, scale: 1.3);
         expect(tester.takeException(), isNull);
-        expect(find.text('Elegir carpeta'), findsOneWidget);
+        expect(find.text('Hacer copia'), findsOneWidget);
       });
     }
   });

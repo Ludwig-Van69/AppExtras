@@ -12,6 +12,10 @@ void main() {
     expect(manifest, contains('android:allowBackup="true"'));
   });
 
+  test('la app solo se usa en vertical', () {
+    expect(manifest, contains('android:screenOrientation="portrait"'));
+  });
+
   test('sin permisos de internet ni de almacenamiento general', () {
     for (final permission in [
       'INTERNET',

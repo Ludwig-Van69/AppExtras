@@ -610,4 +610,53 @@ void main() {
       expect(storage.files(folder), contains('horas-2026-11-10.csv'));
     });
   });
+
+  group('compartir copia (023)', () {
+    test('sin carpeta: copia completa al menú y anota la fecha '
+        '(RF-2, RF-4)', () async {
+      await repo.save(entry(3, 150, reason: 'Inventario'));
+      final r = await c.shareBackup();
+      expect(r.ok, isTrue);
+      final s = storage.shared.single;
+      expect(parseBackupName(s.name)?.kind, BackupKind.automatic);
+      expect(s.name, contains('2026-11-10'));
+      expect(s.mime, 'application/octet-stream');
+      // Es una copia que se puede restaurar, con sus días.
+      final file = File(p.join(dir.path, 'compartida.db'));
+      await file.writeAsBytes(s.bytes);
+      expect(
+        (await readBackupFile(
+          file.path,
+          factory: databaseFactoryFfi,
+        )).map((d) => d.entry),
+        [entry(3, 150, reason: 'Inventario')],
+      );
+      expect(c.settings.lastShared, now);
+      expect((await store.load()).lastShared, now);
+    });
+
+    test('con carpeta no escribe en ella ni cambia «Última copia» '
+        '(RF-5)', () async {
+      await withFolder();
+      await repo.save(entry(3, 60));
+      final r = await c.shareBackup();
+      expect(r.ok, isTrue);
+      expect(storage.files(folder), isEmpty);
+      expect(c.settings.lastSuccess, isNull);
+      expect(c.settings.dirty, isTrue);
+    });
+
+    test('una app vacía también se comparte', () async {
+      expect((await c.shareBackup()).ok, isTrue);
+      expect(storage.shared, hasLength(1));
+    });
+
+    test('si no se abre el menú, lo dice y no anota la fecha (RF-3)', () async {
+      storage.failShare = StorageProblem.other;
+      final r = await c.shareBackup();
+      expect(r.ok, isFalse);
+      expect(r.message, isNotEmpty);
+      expect(c.settings.lastShared, isNull);
+    });
+  });
 }

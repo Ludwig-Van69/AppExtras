@@ -47,9 +47,10 @@ Future<void> _openMonth(WidgetTester tester, String title) async {
   );
   await tester.pumpAndSettle();
   // Los años anteriores salen plegados (018, RF-5): primero se despliega.
+  // El año en curso ya viene abierto.
   final year = title.split(' ').last;
   final card = find.byKey(ValueKey('año-$year'));
-  if (card.evaluate().isNotEmpty) {
+  if (card.evaluate().isNotEmpty && find.text(title).evaluate().isEmpty) {
     await tester.tap(find.text(year));
     await tester.pumpAndSettle();
   }

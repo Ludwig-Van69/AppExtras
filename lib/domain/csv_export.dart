@@ -152,6 +152,7 @@ String buildCsv(
           'Minutos',
           'Importe cobrado (€)',
           'Nota',
+          'Día libre',
         ].join(_sep),
       )
       ..write(_eol);
@@ -161,12 +162,13 @@ String buildCsv(
         ..write(
           [
             _date(m.date),
-            m.box.label,
+            m.box?.label ?? '',
             m.kind.label,
             '$sign${csvHours(m.minutes)}',
             '${m.signedMinutes}',
             m.cents == null ? '' : csvEuros(m.cents!),
             _field(m.note ?? ''),
+            m.dayOff == null ? '' : _date(m.dayOff!),
           ].join(_sep),
         )
         ..write(_eol);

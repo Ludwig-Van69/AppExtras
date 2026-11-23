@@ -27,27 +27,46 @@ enum SavedBox {
   final String label;
 }
 
-/// Los cuatro movimientos (RF-2): dos entradas y dos salidas.
+/// Los movimientos (RF-2): dos entradas y dos salidas de un cajón, y el
+/// cambio por libre (022), que sale de un mes sin pasar por ningún cajón.
 enum SavedMoveKind {
   before('Horas de antes', isIn: true),
   setAside('Apartar', isIn: true),
   timeOff('Tiempo libre', isIn: false),
-  paid('Cobrar', isIn: false);
+  paid('Cobrar', isIn: false),
+  swap('Cambio por libre', isIn: false);
 
   const SavedMoveKind(this.label, {required this.isIn});
   final String label;
   final bool isIn;
+
+  /// Resta sus horas del mes de su fecha (008, RF-5; 022, RF-2).
+  bool get takesFromMonth => this == setAside || this == swap;
+
+  /// Va a un cajón: todos menos el cambio por libre (022, RF-1).
+  bool get hasBox => this != swap;
 }
 
 /// Por qué no se puede guardar lo escrito (RF-3).
 enum SavedProblem {
   hours('Elige entre 0,5 y 999 h, en medias horas.'),
   note('La nota puede tener hasta 60 letras.'),
-  date('La fecha debe estar entre el 1-1-2020 y hoy.');
+  date('La fecha debe estar entre el 1-1-2020 y hoy.'),
+  dayOff(
+    'El día libre debe estar entre el 1-1-2020 y el 31-12 del año que viene.',
+  );
 
   const SavedProblem(this.message);
   final String message;
+
+  /// El texto con el año concreto (022, RF-4).
+  String messageFor(DateTime today) => this == dayOff
+      ? 'El día libre debe estar entre el 1-1-2020 y el 31-12-${today.year + 1}.'
+      : message;
 }
+
+/// Último día libre que se puede apuntar: el 31-12 del año que viene.
+DateTime lastDayOff(DateTime today) => DateTime(today.year + 1, 12, 31);
 
 /// Comprueba lo que escribe el usuario. [minutes] es nulo si no se entiende.
 /// Devuelve el primer problema, o nulo si se puede guardar.
@@ -56,6 +75,7 @@ SavedProblem? validateSavedMove({
   required DateTime date,
   required DateTime today,
   String? note,
+  DateTime? dayOff,
 }) {
   if (minutes == null ||
       minutes < 30 ||
@@ -68,23 +88,38 @@ SavedProblem? validateSavedMove({
   if (day.isBefore(firstSavedDate) || day.isAfter(_day(today))) {
     return SavedProblem.date;
   }
+  if (dayOff != null) {
+    final off = _day(dayOff);
+    if (off.isBefore(firstSavedDate) || off.isAfter(lastDayOff(today))) {
+      return SavedProblem.dayOff;
+    }
+  }
   return null;
 }
 
-/// Un movimiento de un cajón. [minutes] siempre es positivo; el signo lo da
-/// [kind]. [cents] es el importe congelado de un cobro (RF-9), y solo lo
-/// lleva un cobro.
+/// Un movimiento. [minutes] siempre es positivo; el signo lo da [kind].
+/// [cents] es el importe congelado de un cobro (RF-9), y solo lo lleva un
+/// cobro. El cambio por libre no tiene cajón y es el único que puede llevar
+/// [dayOff], el día libre, solo informativo (022, RF-1).
 class SavedMove {
   SavedMove({
     this.id,
-    required this.box,
+    this.box,
     required this.kind,
     required DateTime date,
     required this.minutes,
     String? note,
     this.cents,
+    DateTime? dayOff,
   }) : date = _day(date),
+       dayOff = dayOff == null ? null : _day(dayOff),
        note = _cleanNote(note) {
+    if (kind.hasBox != (box != null)) {
+      throw ArgumentError('Solo el cambio por libre va sin cajón.');
+    }
+    if (dayOff != null && kind != SavedMoveKind.swap) {
+      throw ArgumentError('Solo el cambio por libre lleva día libre.');
+    }
     if (minutes < 1 || minutes > maxSavedMinutes) {
       throw ArgumentError.value(minutes, 'minutes', 'fuera de rango');
     }
@@ -101,7 +136,8 @@ class SavedMove {
 
   /// Nulo hasta que se guarda por primera vez.
   final int? id;
-  final SavedBox box;
+  final SavedBox? box;
+  final DateTime? dayOff;
   final SavedMoveKind kind;
   final DateTime date;
   final int minutes;
@@ -122,10 +158,12 @@ class SavedMove {
       other.date == date &&
       other.minutes == minutes &&
       other.note == note &&
-      other.cents == cents;
+      other.cents == cents &&
+      other.dayOff == dayOff;
 
   @override
-  int get hashCode => Object.hash(id, box, kind, date, minutes, note, cents);
+  int get hashCode =>
+      Object.hash(id, box, kind, date, minutes, note, cents, dayOff);
 }
 
 /// Importe congelado de un cobro: horas × tarifa normal del día del cobro,
@@ -149,7 +187,7 @@ List<YearMonth> monthsShortOfSetAside(
   }
   final setAside = <YearMonth, int>{};
   for (final m in moves) {
-    if (m.kind != SavedMoveKind.setAside) continue;
+    if (!m.kind.takesFromMonth) continue;
     final ym = YearMonth.of(m.date);
     setAside[ym] = (setAside[ym] ?? 0) + m.minutes;
   }
@@ -178,7 +216,7 @@ List<SavedMove> setAsidesUnpricedBy(
   Iterable<SavedMove> moves,
 ) => [
   for (final m in moves)
-    if (m.kind == SavedMoveKind.setAside &&
+    if (m.kind.takesFromMonth &&
         rateFor(DayKind.normal, m.date, before) != null &&
         rateFor(DayKind.normal, m.date, after) == null)
       m,
@@ -263,7 +301,9 @@ class SavedSummary {
     var paid = 0;
     var paidCents = 0;
     for (final m in moves) {
-      if (m.kind == SavedMoveKind.timeOff) compensated += m.minutes;
+      if (m.kind == SavedMoveKind.timeOff || m.kind == SavedMoveKind.swap) {
+        compensated += m.minutes;
+      }
       if (m.kind == SavedMoveKind.paid) {
         paid += m.minutes;
         paidCents += m.cents!;
@@ -335,7 +375,7 @@ String? checkSavedMove({
     for (final m in all)
       if (old == null || m.id != old.id) m,
   ];
-  // Cambiar solo la nota siempre se puede.
+  // Cambiar solo la nota o el día libre siempre se puede (022, RF-5).
   final onlyNote =
       old != null &&
       move != null &&
@@ -345,14 +385,14 @@ String? checkSavedMove({
       move.minutes == old.minutes;
   if (onlyNote) return null;
   // Un apartado de un mes ya entregado o cobrado no se toca.
-  if (old != null && old.kind == SavedMoveKind.setAside) {
+  if (old != null && old.kind.takesFromMonth) {
     final month = YearMonth.of(old.date);
     final closed = records.any(
       (r) => r.month == month && r.status != MonthStatus.open,
     );
     if (closed) return SetAsideProblem.notOpen.message;
   }
-  if (move != null && move.kind == SavedMoveKind.setAside) {
+  if (move != null && move.kind.takesFromMonth) {
     final month = YearMonth.of(move.date);
     final lines = MoneyOverview.compute(
       entries: entries.where((e) => YearMonth.of(e.date) == month),
@@ -366,9 +406,10 @@ String? checkSavedMove({
   final after = [...others, ?move];
   final short = findSavedShortfall(after);
   if (short == null) return null;
-  if (move != null && !move.kind.isIn && move.box == short.box) {
-    final free = savedAvailable(others, move.box, move.date);
-    return 'Solo hay ${_hours(free < 0 ? 0 : free)} h en ${move.box.label} '
+  final box = move?.box;
+  if (move != null && !move.kind.isIn && box == short.box) {
+    final free = savedAvailable(others, box!, move.date);
+    return 'Solo hay ${_hours(free < 0 ? 0 : free)} h en ${move.box!.label} '
         'a esa fecha.';
   }
   return 'Esas horas de ${short.box.label} ya han salido. Quita antes la '

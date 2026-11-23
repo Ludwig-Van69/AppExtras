@@ -222,6 +222,7 @@ void main() {
             await createSchemaV6(d);
             await createSchemaV7(d);
             await createSchemaV8(d);
+            await createSchemaV9(d);
           },
         ),
       );

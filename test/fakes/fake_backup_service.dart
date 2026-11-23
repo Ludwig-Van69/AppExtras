@@ -103,6 +103,20 @@ class FakeBackupService extends ChangeNotifier implements BackupService {
     calls.add('exportCsv');
     return exportResult;
   }
+
+  BackupOutcome shareResult = const BackupOutcome.ok('horas-copia.db');
+
+  /// Fecha que se anota al compartir bien.
+  DateTime sharedAt = DateTime(2026, 11, 6, 18);
+
+  @override
+  Future<BackupOutcome> shareBackup() async {
+    calls.add('shareBackup');
+    if (shareResult.ok) {
+      settings = _settings.copyWith(lastShared: () => sharedAt);
+    }
+    return shareResult;
+  }
 }
 
 /// Una copia de la lista, con datos inventados.

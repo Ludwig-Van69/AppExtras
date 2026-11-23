@@ -80,4 +80,42 @@ void main() {
     expect(c.lastError, isNull);
     expect(c.dirty, isFalse);
   });
+
+  group('última copia compartida (023)', () {
+    test('se guarda y se lee; un archivo antiguo sin ella vale nula', () async {
+      final saved = BackupSettings(lastShared: DateTime(2026, 11, 20, 9, 30));
+      await store.save(saved);
+      expect(await store.load(), saved);
+      await file.writeAsString('{"folder": null, "dirty": true}');
+      expect((await store.load()).lastShared, isNull);
+      await file.writeAsString('{"lastShared": 3}');
+      expect((await store.load()).lastShared, isNull);
+    });
+
+    test('aviso: nunca, menos de 15 días, 15 o más y con carpeta '
+        '(RF-6 a RF-9)', () {
+      final now = DateTime(2026, 11, 23, 12);
+      expect(const BackupSettings().shareReminder(now), ShareReminder.never);
+      BackupSettings at(DateTime d) => BackupSettings(lastShared: d);
+      expect(
+        at(DateTime(2026, 11, 9, 13)).shareReminder(now),
+        ShareReminder.none,
+      );
+      expect(
+        at(DateTime(2026, 11, 8, 12)).shareReminder(now),
+        ShareReminder.overdue,
+      );
+      expect(
+        const BackupSettings(folder: 'a').shareReminder(now),
+        ShareReminder.none,
+      );
+      expect(
+        BackupSettings(
+          folder: 'a',
+          lastShared: DateTime(2020),
+        ).shareReminder(now),
+        ShareReminder.none,
+      );
+    });
+  });
 }

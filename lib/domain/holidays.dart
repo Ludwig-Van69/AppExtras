@@ -2,13 +2,9 @@
 /// si un día lo es (004).
 library;
 
-import 'local_holidays.dart';
-
-export 'local_holidays.dart';
-
-/// De dónde viene un festivo: nacional, autonómico o local ([regional]) o
-/// añadido por el usuario.
-enum HolidayGroup { national, regional, custom }
+/// De dónde viene un festivo: nacional (de serie) o añadido por el usuario
+/// (autonómicos, locales y traslados; 004, RF-2).
+enum HolidayGroup { national, custom }
 
 /// Un festivo. Tiene una sola de estas formas: cada año el mismo día
 /// ([month] y [day]), relativo a la Pascua ([easterOffset]) o una fecha
@@ -81,10 +77,9 @@ DateTime easterSunday(int year) {
   return DateTime(year, month, day);
 }
 
-/// Los festivos que trae la app: los nacionales y los de [localHolidays].
-/// Los de un solo año (traslados y fiestas que cambian de fecha) salen del
-/// calendario laboral oficial de 2026 y 2027: hay que añadir los de cada año
-/// nuevo.
+/// Los festivos que trae la app: solo los 10 nacionales comunes a toda
+/// España (004, RF-2). Los autonómicos, los locales y los traslados cambian
+/// según el sitio, así que los añade el usuario.
 final builtInHolidays = <Holiday>[
   const Holiday.fixed(
     'nat-ano-nuevo',
@@ -129,12 +124,6 @@ final builtInHolidays = <Holiday>[
     12,
     6,
   ),
-  Holiday.once(
-    'nat-constitucion-2026',
-    'Constitución (trasladada)',
-    DateTime(2026, 12, 7),
-    group: HolidayGroup.national,
-  ),
   const Holiday.fixed(
     'nat-inmaculada',
     'Inmaculada',
@@ -143,7 +132,6 @@ final builtInHolidays = <Holiday>[
     8,
   ),
   const Holiday.fixed('nat-navidad', 'Navidad', HolidayGroup.national, 12, 25),
-  ...localHolidays,
 ];
 
 /// Dice si un día es festivo, según los de serie activos y los propios.

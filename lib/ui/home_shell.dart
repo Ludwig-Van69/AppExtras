@@ -5,6 +5,8 @@ import 'backup/backup_controller.dart';
 import 'components/app_nav_bar.dart';
 import 'extras/extras_controller.dart';
 import 'extras/extras_screen.dart';
+import 'first_steps/first_steps_card.dart';
+import 'first_steps/first_steps_controller.dart';
 import 'holidays/holidays_controller.dart';
 import 'log/log_screen.dart';
 import 'metrics/metrics_screen.dart';
@@ -36,6 +38,7 @@ class HomeShell extends StatefulWidget {
     this.money,
     this.extras,
     this.vacation,
+    this.firstSteps,
   });
 
   final DayEntryRepository repository;
@@ -45,6 +48,9 @@ class HomeShell extends StatefulWidget {
   final MoneyController? money;
   final ExtrasController? extras;
   final VacationController? vacation;
+
+  /// La tarjeta «Primeros pasos» de Resumen (024); nula, sin tarjeta.
+  final FirstStepsController? firstSteps;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -98,6 +104,7 @@ class _HomeShellState extends State<HomeShell> {
         vacation: widget.vacation,
         saves: _saves,
         clock: widget.clock,
+        onHolidaysOpened: widget.firstSteps?.markHolidaysSeen,
       ),
     ),
   );
@@ -143,6 +150,17 @@ class _HomeShellState extends State<HomeShell> {
                   ? null
                   : () => _openExtra(ExtraTab.saved),
               actions: [gear],
+              header: widget.firstSteps == null
+                  ? null
+                  : FirstStepsCard(
+                      steps: widget.firstSteps!,
+                      money: widget.money,
+                      vacation: widget.vacation,
+                      holidays: widget.holidays,
+                      backup: widget.backup,
+                      waitForSaves: _saves.wait,
+                      clock: widget.clock,
+                    ),
             )
           else
             const SizedBox.shrink(),

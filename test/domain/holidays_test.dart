@@ -40,12 +40,16 @@ void main() {
       expect(cal.holidayOn(DateTime(2026, 1, 1, 23, 59))!.name, 'Año Nuevo');
     });
 
-    test('traslados de un solo año', () {
+    test('solo los 10 nacionales: sin autonómicos, locales ni traslados '
+        '(RF-2)', () {
+      expect(builtInHolidays, hasLength(10));
       expect(
-        cal.holidayOn(DateTime(2026, 12, 7))!.name,
-        startsWith('Constitución'),
+        builtInHolidays.every((h) => h.group == HolidayGroup.national),
+        isTrue,
       );
-      expect(cal.holidayOn(DateTime(2027, 12, 7)), isNull);
+      expect(cal.holidayOn(DateTime(2026, 12, 7)), isNull); // traslado
+      expect(cal.holidayOn(DateTime(2026, 4, 2)), isNull); // Jueves Santo
+      expect(cal.holidayOn(DateTime(2026, 7, 28)), isNull); // autonómico
     });
 
     test('los ids no se repiten', () {

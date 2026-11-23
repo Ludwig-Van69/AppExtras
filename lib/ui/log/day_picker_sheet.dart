@@ -216,6 +216,7 @@ class _DayPickerSheetState extends State<_DayPickerSheet> {
               today: widget.today,
               showLegend: false,
               tileHeight: _tileHeight,
+              minWeeks: 6, // mismo alto todos los meses: no saltan los botones
               markOf: dayMarksOf(context),
               onTap: (date) {
                 Haptics.select();

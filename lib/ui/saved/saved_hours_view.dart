@@ -32,6 +32,7 @@ IconData _icon(SavedMoveKind k) => switch (k) {
   SavedMoveKind.setAside => Icons.move_to_inbox_outlined,
   SavedMoveKind.timeOff => Icons.beach_access_outlined,
   SavedMoveKind.paid => Icons.payments_outlined,
+  SavedMoveKind.swap => Icons.swap_horiz,
 };
 
 /// Qué hace cada movimiento, en una frase (RF-2).
@@ -46,6 +47,9 @@ String _explain(SavedMoveKind k) => switch (k) {
   SavedMoveKind.paid =>
     'Horas que te pagan en dinero, a la tarifa normal de la fecha. Bajan del '
         'cajón.',
+  SavedMoveKind.swap =>
+    'Se restan de las horas normales del mes de la fecha y te las dan como '
+        'tiempo libre. No pasan por ningún cajón.',
 };
 
 /// Icono de cada cajón (009, RF-3).
@@ -56,14 +60,23 @@ IconData savedBoxIcon(SavedBox b) => switch (b) {
 
 /// Abre la ficha de [move] (o una nueva) y, si se borra, ofrece «Deshacer»
 /// (008, RF-14, RF-15). Devuelve el aviso para que quien llama lo guarde.
+/// [startKind] y [startDate] eligen de antemano el tipo y la fecha de uno
+/// nuevo (022, RF-7).
 Future<UndoHandle?> openSavedMove(
   BuildContext context,
   MoneyController money, [
   SavedMove? move,
+  SavedMoveKind? startKind,
+  DateTime? startDate,
 ]) async {
   final deleted = await Navigator.of(context).push<SavedMove>(
     MaterialPageRoute(
-      builder: (_) => SavedMoveEditScreen(money: money, move: move),
+      builder: (_) => SavedMoveEditScreen(
+        money: money,
+        move: move,
+        startKind: startKind,
+        startDate: startDate,
+      ),
     ),
   );
   if (deleted == null || !context.mounted) return null;
@@ -132,19 +145,24 @@ class SavedHoursView extends StatelessWidget {
     final c = context.colors;
     final sign = m.kind.isIn ? '+' : '−';
     final note = m.note == null ? '' : ' · ${m.note}';
+    final off = m.dayOff == null ? '' : ' · libre el ${_shortDate(m.dayOff!)}';
+    final box = m.box;
     return ListTile(
       key: ValueKey('saved-${m.id}'),
       contentPadding: EdgeInsets.zero,
       minVerticalPadding: Space.s,
-      leading: Icon(savedBoxIcon(m.box), color: c.bag.strong),
+      leading: Icon(
+        box == null ? _icon(m.kind) : savedBoxIcon(box),
+        color: c.bag.strong,
+      ),
       title: Text(
-        '${m.kind.label} · ${m.box.label}',
+        box == null ? m.kind.label : '${m.kind.label} · ${box.label}',
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         style: AppText.bodyStrong.copyWith(color: c.text),
       ),
       subtitle: Text(
-        '${_shortDate(m.date)}$note'
+        '${_shortDate(m.date)}$off$note'
         '${m.cents == null ? '' : ' · ${_euros(m.cents!, money.hideAmounts)}'}',
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
@@ -217,10 +235,20 @@ class _BoxCard extends StatelessWidget {
 /// uno que ya existe se guarda solo en cuanto es válido. Si se borra,
 /// devuelve el movimiento borrado para poder deshacerlo.
 class SavedMoveEditScreen extends StatefulWidget {
-  const SavedMoveEditScreen({super.key, required this.money, this.move});
+  const SavedMoveEditScreen({
+    super.key,
+    required this.money,
+    this.move,
+    this.startKind,
+    this.startDate,
+  });
 
   final MoneyController money;
   final SavedMove? move;
+
+  /// Tipo y fecha con que empieza uno nuevo (022, RF-7).
+  final SavedMoveKind? startKind;
+  final DateTime? startDate;
 
   @override
   State<SavedMoveEditScreen> createState() => _SavedMoveEditScreenState();
@@ -228,9 +256,14 @@ class SavedMoveEditScreen extends StatefulWidget {
 
 class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
   late SavedMove? _saved = widget.move;
-  late SavedMoveKind _kind = widget.move?.kind ?? SavedMoveKind.setAside;
+  late SavedMoveKind _kind =
+      widget.move?.kind ?? widget.startKind ?? SavedMoveKind.setAside;
   late SavedBox _box = widget.move?.box ?? SavedBox.own;
-  late DateTime _date = widget.move?.date ?? _dateOnly(widget.money.today);
+  late DateTime _date =
+      widget.move?.date ?? _dateOnly(widget.startDate ?? widget.money.today);
+
+  /// Día libre del cambio por libre (022, RF-8); se ignora en otro tipo.
+  late DateTime? _dayOff = widget.move?.dayOff;
   late final _hours = TextEditingController(
     text: widget.move == null ? '' : formatMinutes(widget.move!.minutes),
   );
@@ -260,16 +293,20 @@ class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
     date: _date,
     today: widget.money.today,
     note: _note.text,
+    dayOff: _offOrNull,
   );
+
+  DateTime? get _offOrNull => _kind == SavedMoveKind.swap ? _dayOff : null;
 
   SavedMove _build() => SavedMove(
     id: _saved?.id,
-    box: _box,
+    box: _kind.hasBox ? _box : null,
     kind: _kind,
     date: _date,
     minutes: parseHours(_hours.text)!,
     note: _note.text,
     cents: _kind == SavedMoveKind.paid ? 0 : null, // lo pone el controlador
+    dayOff: _offOrNull,
   );
 
   /// Mismo movimiento, sin contar el importe (lo calcula el controlador).
@@ -279,7 +316,8 @@ class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
       a.box == b.box &&
       a.date == b.date &&
       a.minutes == b.minutes &&
-      a.note == b.note;
+      a.note == b.note &&
+      a.dayOff == b.dayOff;
 
   /// Al editar uno que ya existe, se guarda en cuanto es válido.
   Future<void> _changed() async {
@@ -341,6 +379,23 @@ class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
     await _changed();
   }
 
+  /// Elegir el día libre (022, RF-8).
+  Future<void> _pickDayOff() async {
+    final today = widget.money.today;
+    final last = lastDayOff(today);
+    final start = _dayOff ?? _dateOnly(today);
+    final d = await showDatePicker(
+      context: context,
+      helpText: 'Día libre',
+      initialDate: start.isAfter(last) ? last : start,
+      firstDate: firstSavedDate,
+      lastDate: last,
+    );
+    if (d == null) return;
+    _dayOff = d;
+    await _changed();
+  }
+
   /// «Se cobrarán a 15,00 €/h: 45,00 €» (RF-9).
   String? _paidPreview() {
     if (_kind != SavedMoveKind.paid) return null;
@@ -356,7 +411,7 @@ class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
 
   /// Recordatorio de la jornada y botón «Día completo» (020, RF-1 a RF-3).
   List<Widget> _fullDay(AppColors c) {
-    final minutes = workdayMinutes(_date);
+    final minutes = workdayMinutes(_offOrNull ?? _date);
     return [
       const SizedBox(height: Space.s),
       Text(workdayReminder, style: AppText.body.copyWith(color: c.textSoft)),
@@ -432,24 +487,26 @@ class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
             _explain(_kind),
             style: AppText.body.copyWith(color: c.textSoft),
           ),
-          const SizedBox(height: Space.l),
-          Text('Cajón', style: AppText.label.copyWith(color: c.textSoft)),
-          const SizedBox(height: Space.s),
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<SavedBox>(
-              showSelectedIcon: false,
-              segments: [
-                for (final b in SavedBox.values)
-                  ButtonSegment(value: b, label: Text(b.label)),
-              ],
-              selected: {_box},
-              onSelectionChanged: (v) {
-                _box = v.first;
-                _changed();
-              },
+          if (_kind.hasBox) ...[
+            const SizedBox(height: Space.l),
+            Text('Cajón', style: AppText.label.copyWith(color: c.textSoft)),
+            const SizedBox(height: Space.s),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<SavedBox>(
+                showSelectedIcon: false,
+                segments: [
+                  for (final b in SavedBox.values)
+                    ButtonSegment(value: b, label: Text(b.label)),
+                ],
+                selected: {_box},
+                onSelectionChanged: (v) {
+                  _box = v.first;
+                  _changed();
+                },
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: Space.l),
           TextField(
             controller: _hours,
@@ -465,7 +522,8 @@ class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
               suffixText: 'h',
             ),
           ),
-          if (_kind == SavedMoveKind.timeOff) ..._fullDay(c),
+          if (_kind == SavedMoveKind.timeOff || _kind == SavedMoveKind.swap)
+            ..._fullDay(c),
           const SizedBox(height: Space.l),
           OutlinedButton.icon(
             onPressed: _pickDate,
@@ -474,6 +532,35 @@ class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
               'Fecha: ${_date.day} de ${monthName(_date.month)} de ${_date.year}',
             ),
           ),
+          if (_kind == SavedMoveKind.swap) ...[
+            const SizedBox(height: Space.s),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('dia-libre'),
+                    onPressed: _pickDayOff,
+                    icon: const Icon(Icons.beach_access_outlined),
+                    label: Text(
+                      _dayOff == null
+                          ? 'Día libre (opcional)'
+                          : 'Día libre: ${_dayOff!.day} de '
+                                '${monthName(_dayOff!.month)} de ${_dayOff!.year}',
+                    ),
+                  ),
+                ),
+                if (_dayOff != null)
+                  IconButton(
+                    tooltip: 'Quitar el día libre',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _dayOff = null;
+                      _changed();
+                    },
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: Space.l),
           TextField(
             controller: _note,
@@ -515,8 +602,9 @@ class _SavedMoveEditScreenState extends State<SavedMoveEditScreen> {
               child: Text(
                 showProblem
                     ? (_isNew
-                          ? problem.message
-                          : '${problem.message} Hasta entonces no se guarda.')
+                          ? problem.messageFor(widget.money.today)
+                          : '${problem.messageFor(widget.money.today)} '
+                                'Hasta entonces no se guarda.')
                     : (_pendingChange
                           ? '${_refused!} Hasta entonces no se guarda.'
                           : _refused!),
