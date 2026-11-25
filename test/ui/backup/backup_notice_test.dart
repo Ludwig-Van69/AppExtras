@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:horas_y_vacaciones/data/app_settings.dart';
+import 'package:horas_y_vacaciones/data/backup_diff.dart';
+import 'package:horas_y_vacaciones/domain/backup_names.dart';
 import 'package:horas_y_vacaciones/domain/day_entry.dart';
 import 'package:horas_y_vacaciones/domain/day_kind.dart';
+import 'package:horas_y_vacaciones/domain/extras.dart';
+import 'package:horas_y_vacaciones/ui/theme/app_theme.dart';
 import 'package:horas_y_vacaciones/ui/app.dart';
 import 'package:horas_y_vacaciones/ui/backup/backup_controller.dart';
 import 'package:horas_y_vacaciones/ui/backup/backup_notice.dart';
@@ -198,12 +202,13 @@ void main() {
       expect(backup.calls, ['onLeavingApp']);
     });
 
-    testWidgets('al volver a primer plano no copia', (tester) async {
+    testWidgets('al volver a primer plano no copia, pero mira si hay algo '
+        'de otro móvil (025, RF-9)', (tester) async {
       await _open(tester, settings: _good);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
-      expect(backup.calls, isEmpty);
+      expect(backup.calls, ['checkOtherDevices']);
     });
 
     testWidgets(
@@ -229,5 +234,252 @@ void main() {
         expect(find.text('2,5 h'), findsWidgets);
       },
     );
+  });
+
+  group('cambios de otro móvil (025)', () {
+    DayEntry day(int d, int minutes, {DayKind kind = DayKind.normal}) =>
+        DayEntry(date: DateTime(2026, 11, d), minutes: minutes, kind: kind);
+    ExtraItem fine(int cents) => ExtraItem(
+      id: 1,
+      type: ExtraType.fine,
+      date: DateTime(2026, 11, 2),
+      cents: cents,
+      concept: 'Multa inventada',
+    );
+    BackupDiff sample({int extraDays = 0}) => BackupDiff(
+      days: [
+        DiffPair(day(3, 120), day(3, 180)),
+        DiffPair(null, day(4, 90, kind: DayKind.festive)),
+        DiffPair(day(5, 60), null),
+        for (var i = 0; i < extraDays; i++) DiffPair(null, day(6 + i, 30)),
+      ],
+      items: [DiffPair(fine(5000), fine(2500))],
+    );
+
+    OtherDeviceOffer offer({
+      bool tooNew = false,
+      bool local = false,
+      BackupDiff? diff,
+    }) => OtherDeviceOffer(
+      BackupInfo(
+        'horas-copia-2026-11-06_17-30-00_x7b2m1_Trabajo.db',
+        BackupKind.automatic,
+        DateTime(2026, 11, 6, 17, 30),
+        1,
+        deviceId: 'x7b2m1',
+        deviceName: 'Trabajo',
+      ),
+      diff: tooNew ? null : (diff ?? sample()),
+      localChanges: local,
+      tooNew: tooNew,
+    );
+
+    testWidgets('aviso con «Ver» y diálogo con el resumen (RF-11, RF-12)', (
+      tester,
+    ) async {
+      await _open(tester, settings: _good);
+      backup.offer = offer();
+      await tester.pumpAndSettle();
+      expect(find.text('Hay cambios de Trabajo · hoy, 17:30'), findsOneWidget);
+      await tester.tap(find.text('Ver'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cambios de Trabajo'), findsOneWidget);
+      expect(find.text('Copia hecha hoy, 17:30'), findsOneWidget);
+      expect(find.text('3 distintos'), findsOneWidget);
+      expect(find.text('1 distinto'), findsOneWidget);
+      expect(find.text('igual'), findsNWidgets(5));
+      expect(find.textContaining('cambios sin copia'), findsNothing);
+    });
+
+    testWidgets('«Cargar» espera, carga y lo dice (RF-14)', (tester) async {
+      await _open(tester, settings: _good);
+      backup.offer = offer();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cargar'));
+      await tester.pumpAndSettle();
+      expect(backup.calls, contains('loadOffer'));
+      expect(find.text('Cargados los cambios de Trabajo'), findsOneWidget);
+      expect(find.textContaining('Hay cambios de'), findsNothing);
+    });
+
+    testWidgets('si falla al cargar, dice por qué', (tester) async {
+      await _open(tester, settings: _good);
+      backup.loadResult = const BackupOutcome.fail('No se ha podido.');
+      backup.offer = offer();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cargar'));
+      await tester.pumpAndSettle();
+      expect(find.text('No se ha podido.'), findsOneWidget);
+    });
+
+    testWidgets('«Ahora no» y cerrar el diálogo lo descartan (RF-15)', (
+      tester,
+    ) async {
+      await _open(tester, settings: _good);
+      backup.offer = offer();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ahora no'));
+      await tester.pumpAndSettle();
+      expect(backup.calls, contains('dismissOffer'));
+      expect(backup.calls, isNot(contains('loadOffer')));
+      expect(find.textContaining('Hay cambios de'), findsNothing);
+
+      backup.offer = offer();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver'));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(5, 5)); // fuera del diálogo
+      await tester.pumpAndSettle();
+      expect(backup.calls.where((c) => c == 'dismissOffer'), hasLength(2));
+    });
+
+    testWidgets('con cambios sin copia en este móvil, lo avisa (RF-13)', (
+      tester,
+    ) async {
+      await _open(tester, settings: _good);
+      backup.offer = offer(local: true);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Este móvil tiene cambios sin copia. Se guardarán en la copia '
+          'previa antes de cargar.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('versión más nueva: aviso para actualizar, sin botón (RF-17)', (
+      tester,
+    ) async {
+      await _open(tester, settings: _good);
+      backup.offer = offer(tooNew: true);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Trabajo tiene una versión más nueva de la app. Actualiza esta para '
+          'ver sus cambios',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Ver'), findsNothing);
+    });
+
+    testWidgets('la copia fallida va primero (RF-18)', (tester) async {
+      await _open(
+        tester,
+        settings: const BackupSettings(
+          folder: _folder,
+          dirty: false,
+          lastError: 'Sin espacio',
+        ),
+      );
+      backup.offer = offer();
+      await tester.pumpAndSettle();
+      expect(find.text('No se ha podido hacer la copia'), findsOneWidget);
+      expect(find.textContaining('Hay cambios de'), findsNothing);
+    });
+
+    testWidgets('sin desbordes a 360 px con letra al 130 %', (tester) async {
+      await _open(tester, settings: _good, width: 360, scale: 1.3);
+      backup.offer = offer(local: true);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull); // el aviso
+      await tester.tap(find.text('Ver'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull); // el diálogo
+    });
+
+    Future<void> openDialog(WidgetTester tester, OtherDeviceOffer o) async {
+      backup.offer = o;
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('tocar un apartado despliega aquí → allí, y se vuelve a '
+        'plegar (RF-12b)', (tester) async {
+      await _open(tester, settings: _good);
+      await openDialog(tester, offer());
+      expect(find.textContaining('aquí'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('apartado-hours')));
+      await tester.pumpAndSettle();
+      expect(find.text('3 nov 2026'), findsOneWidget);
+      expect(find.text('aquí 2 h  →  Trabajo 3 h'), findsOneWidget);
+      expect(find.text('aquí —  →  Trabajo 1,5 h festiva'), findsOneWidget);
+      expect(find.text('aquí 1 h  →  Trabajo —'), findsOneWidget);
+      // Los apartados iguales no se despliegan.
+      expect(find.byKey(const ValueKey('apartado-vacation')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('apartado-hours')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('aquí'), findsNothing);
+    });
+
+    testWidgets('multas con importe y estado; ocultos si se ocultan los '
+        'importes (RF-12b, RF-12d)', (tester) async {
+      await _open(tester, settings: _good);
+      await openDialog(tester, offer());
+      await tester.tap(find.byKey(const ValueKey('apartado-extras')));
+      await tester.pumpAndSettle();
+      expect(find.text('Multa inventada · 2 nov 2026'), findsOneWidget);
+      expect(
+        find.text('aquí 50,00 € pendiente  →  Trabajo 25,00 € pendiente'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Ahora no'));
+      await tester.pumpAndSettle();
+
+      // Con los importes ocultos, el mismo detalle tapa los euros.
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: BackupNotice(
+              backup: backup,
+              onReview: () {},
+              hideAmounts: () => true,
+              clock: () => _now,
+            ),
+          ),
+        ),
+      );
+      await openDialog(tester, offer());
+      await tester.tap(find.byKey(const ValueKey('apartado-extras')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('aquí •••• € pendiente  →  Trabajo •••• € pendiente'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('50,00'), findsNothing);
+    });
+
+    testWidgets('más de 20: las 20 primeras y «y N más» (RF-12c)', (
+      tester,
+    ) async {
+      await _open(tester, settings: _good);
+      await openDialog(tester, offer(diff: sample(extraDays: 22)));
+      expect(find.text('25 distintos'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('apartado-hours')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('aquí'), findsNWidgets(20));
+      expect(find.text('y 5 más'), findsOneWidget);
+    });
+
+    testWidgets('desplegado, sin desbordes a 360 px con letra al 130 %', (
+      tester,
+    ) async {
+      await _open(tester, settings: _good, width: 360, scale: 1.3);
+      await openDialog(tester, offer(diff: sample(extraDays: 22)));
+      await tester.tap(find.byKey(const ValueKey('apartado-hours')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
   });
 }

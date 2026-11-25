@@ -10,6 +10,17 @@ class HelpScreen extends StatelessWidget {
 
   static const _topics = [
     (
+      'Empresa y antigüedad',
+      'En Ajustes › Empresa pones el nombre de tu empresa y tu fecha de '
+          'alta (la de tu vida laboral), los dos opcionales. Debajo de la '
+          'fecha ves los días que llevas, contados como la Seguridad Social: '
+          'días naturales desde el alta, con vacaciones, bajas y fines de '
+          'semana. Compáralos con tu vida laboral para comprobar la fecha. '
+          'Con la fecha puesta, arriba de Métricas sale tu antigüedad en años, '
+          'meses y días. Va en las copias. Para quitar un dato, toca la ✕; '
+          'puedes deshacerlo.',
+    ),
+    (
       'Métricas',
       'Cómo van tus horas extra a lo largo del tiempo, con las horas y sus '
           'euros a la vez. Arriba eliges un año (con flechas) o «Todos los '
@@ -27,7 +38,8 @@ class HelpScreen extends StatelessWidget {
           'tres con más horas: toca uno '
           'para abrirlo. Los euros son los de Resumen y se ocultan con el '
           'ojo; si unas horas son de antes de tu primera tarifa, se cuentan '
-          'con esa y llevan «aprox.».',
+          'con esa y llevan «aprox.». Si pones tu empresa en Ajustes, arriba '
+          'ves tu antigüedad.',
     ),
     (
       'Apuntar horas',
@@ -208,10 +220,25 @@ class HelpScreen extends StatelessWidget {
       'Para no perder tus horas, la app hace copias sola en una carpeta que '
           'eliges tú (Ajustes → «Copias y exportación»). '
           'Se hace una copia al salir de la app, si has cambiado algo desde la '
-          'última. Guarda las 10 más recientes y nunca borra otros archivos de '
-          'esa carpeta. Si una copia falla, aparece un aviso «No se ha podido '
+          'última. Cada copia lleva el nombre de este móvil, que puedes '
+          'cambiar allí mismo. Guarda las 10 más recientes de este móvil y '
+          'nunca borra otros archivos de esa carpeta, tampoco las copias de '
+          'otro móvil. Si una copia falla, aparece un aviso «No se ha podido '
           'hacer la copia» con el botón «Revisar». «Hacer copia ahora» la hace '
           'al momento.',
+    ),
+    (
+      'Dos móviles',
+      'Puedes usar la app en dos móviles. En los dos, elige como carpeta de '
+          'copias la misma carpeta, y sincronízala con Syncthing en modo '
+          '«Enviar y recibir» en ambos. Al abrir la app, si el otro móvil '
+          'tiene cambios más nuevos, Apuntar muestra «Hay cambios de…» con '
+          'el botón «Ver»: verás qué cambia y podrás cargarlos o dejarlo '
+          'para luego. Se trabaja por turnos: cargar sustituye lo de este '
+          'móvil por lo del otro, y antes guarda lo tuyo en una copia «antes '
+          'de restaurar». Apunta en un móvil, sal de la app para que haga su '
+          'copia y luego abre el otro. Los festivos que añadas tú no viajan '
+          'en las copias: añádelos en los dos.',
     ),
     (
       'Primeros pasos',
@@ -235,7 +262,8 @@ class HelpScreen extends StatelessWidget {
     (
       'Restaurar una copia',
       'En «Copias y exportación» toca «Restaurar una copia» y elige una de la '
-          'lista: ves su fecha y cuántos días con horas tiene. Antes de '
+          'lista: ves su fecha, de qué móvil es y cuántos días con horas '
+          'tiene. Antes de '
           'sustituir tus datos, la app guarda una copia de lo que tienes ahora '
           '(«antes de restaurar»), que no se borra sola. Si has reinstalado la '
           'app, elige la carpeta y restaura, o usa «Elegir otro archivo…» para '
@@ -254,8 +282,11 @@ class HelpScreen extends StatelessWidget {
       'Syncthing es una app gratuita que sincroniza carpetas entre el móvil y '
           'el ordenador sin pasar por internet de nadie. Instálala en los dos, '
           'añade en el móvil la carpeta de las copias y compártela con el '
-          'ordenador. En el móvil pon esa carpeta en modo «Solo enviar»: así lo '
-          'que pase en el ordenador nunca podrá cambiar ni borrar tus copias.',
+          'ordenador. Si solo usas un móvil, pon allí la carpeta en modo «Solo '
+          'enviar»: así lo que pase en el ordenador nunca podrá cambiar ni '
+          'borrar tus copias. Si usas dos móviles, en ellos va en «Enviar y '
+          'recibir» (mira «Dos móviles») y en el ordenador, en «Solo '
+          'recibir».',
     ),
     (
       'Tus datos',

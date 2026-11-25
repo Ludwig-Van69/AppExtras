@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../domain/backup_names.dart';
 import 'app_settings.dart';
+import 'device_store.dart';
 import 'folder_storage.dart';
 
 /// La copia que se hace justo antes de cambiar el formato de los datos
@@ -17,6 +18,7 @@ Future<void> backupBeforeUpgrade(
   String dbPath, {
   FolderStorage? storage,
   SettingsStore? settings,
+  DeviceStore? device,
   DateTime Function()? clock,
 }) async {
   final now = (clock ?? DateTime.now)();
@@ -34,7 +36,13 @@ Future<void> backupBeforeUpgrade(
     final names = (await storage.listFiles(folder)).toSet();
     await storage.writeFile(
       folder,
-      backupFileName(now, kind: BackupKind.beforeRestore, existing: names),
+      backupFileName(
+        now,
+        kind: BackupKind.beforeRestore,
+        existing: names,
+        // Con el móvil, si se sabe (025, RF-5).
+        device: await device?.loadOrCreate(channelDeviceModel),
+      ),
       await File(dbPath).readAsBytes(),
     );
   } catch (_) {

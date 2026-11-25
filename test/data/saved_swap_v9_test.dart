@@ -52,7 +52,7 @@ void main() {
       backupBeforeUpgrade: (_) async => copied = true,
     );
     expect(copied, isTrue);
-    expect(await db.getVersion(), 9);
+    expect(await db.getVersion(), databaseVersion);
     final moves = await SqliteSavedHoursRepository(() async => db).all();
     expect(moves, [
       SavedMove(

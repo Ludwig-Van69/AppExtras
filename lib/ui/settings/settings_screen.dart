@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../backup/backup_controller.dart';
 import '../backup/backup_screen.dart';
 import '../backup/backup_text.dart';
+import '../company/company_controller.dart';
+import '../company/company_screen.dart';
 import '../help_screen.dart';
 import '../holidays/holidays_controller.dart';
 import '../holidays/holidays_screen.dart';
@@ -34,6 +36,7 @@ class SettingsScreen extends StatelessWidget {
     this.holidays,
     this.money,
     this.vacation,
+    this.company,
     this.saves,
     this.clock,
     this.onHolidaysOpened,
@@ -46,6 +49,7 @@ class SettingsScreen extends StatelessWidget {
   final HolidaysController? holidays;
   final MoneyController? money;
   final VacationController? vacation;
+  final CompanyController? company;
   final SaveWaiter? saves;
   final DateTime Function()? clock;
 
@@ -61,6 +65,7 @@ class SettingsScreen extends StatelessWidget {
     final holidays = this.holidays;
     final money = this.money;
     final vacation = this.vacation;
+    final company = this.company;
     Widget tile(IconData icon, String title, String? subtitle, Widget screen) =>
         ListTile(
           contentPadding: EdgeInsets.zero,
@@ -120,6 +125,16 @@ class SettingsScreen extends StatelessWidget {
               'Vacaciones',
               'Primer año y días de cada año',
               VacationSettingsScreen(vacation: vacation),
+            ),
+          if (company != null)
+            ListenableBuilder(
+              listenable: company,
+              builder: (context, _) => tile(
+                Icons.work_outline,
+                'Empresa',
+                company.company.name ?? 'Nombre y fecha de alta',
+                CompanyScreen(company: company),
+              ),
             ),
           if (holidays != null)
             tile(

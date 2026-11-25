@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,10 +7,13 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../../data/app_settings.dart';
+import '../../data/backup_diff.dart';
 import '../../data/backup_file.dart';
+import '../../data/device_store.dart';
 import '../../data/folder_storage.dart';
 import '../../domain/backup_names.dart';
 import '../../domain/csv_export.dart';
+import '../../domain/device_identity.dart';
 import '../../domain/saved_hours.dart';
 import '../../domain/vacations.dart';
 import '../format.dart';
@@ -20,6 +24,30 @@ class BackupOutcome {
   const BackupOutcome.fail(this.message) : ok = false;
   final bool ok;
   final String message;
+}
+
+/// Una copia más nueva de otro móvil (025, RF-11 a RF-13, RF-17).
+class OtherDeviceOffer {
+  const OtherDeviceOffer(
+    this.info, {
+    this.diff,
+    this.localChanges = false,
+    this.tooNew = false,
+  });
+
+  /// La copia: móvil, fecha y nombre del archivo.
+  final BackupInfo info;
+
+  /// Lo que cambiaría al cargarla; nulo si [tooNew].
+  final BackupDiff? diff;
+
+  /// Este móvil tiene cambios que aún no están en ninguna copia (RF-13).
+  final bool localChanges;
+
+  /// La copia es de una versión más nueva de la app (RF-17): solo se avisa.
+  final bool tooNew;
+
+  String get deviceName => info.deviceName ?? 'Otro móvil';
 }
 
 /// Una copia de la carpeta, lista para enseñarla en la pantalla de restaurar.
@@ -55,6 +83,26 @@ abstract interface class BackupService implements Listenable {
 
   /// Hace una copia completa y abre el menú «Compartir» con ella (023).
   Future<BackupOutcome> shareBackup();
+
+  /// Este móvil: código y nombre (025); nulo mientras se carga.
+  DeviceIdentity? get device;
+
+  /// Cambia el nombre de este móvil (025, RF-2). Devuelve el motivo si no
+  /// vale (RF-3), o nulo si se ha guardado.
+  Future<String?> renameDevice(String name);
+
+  /// La copia más nueva de otro móvil que hay que ofrecer, o nulo (025).
+  OtherDeviceOffer? get offer;
+
+  /// Busca en la carpeta una copia más nueva de otro móvil (025, RF-9 a
+  /// RF-11, RF-16, RF-17). Se llama al abrir la app y al volver a ella.
+  Future<void> checkOtherDevices();
+
+  /// Carga la copia ofrecida, como restaurarla (RF-14).
+  Future<BackupOutcome> loadOffer();
+
+  /// «Ahora no»: no se vuelve a ofrecer hasta que haya una más nueva (RF-15).
+  Future<void> dismissOffer();
 }
 
 /// Lleva las copias: cuándo hacerlas, restaurar y exportar (RF-4 a RF-21).
@@ -65,6 +113,8 @@ class BackupController extends ChangeNotifier implements BackupService {
     required this.openDatabase,
     required this.settingsStore,
     required this.storage,
+    required this.deviceStore,
+    this.deviceModel = channelDeviceModel,
     this.factory,
     DateTime Function()? clock,
     Future<Directory> Function()? tempDir,
@@ -74,6 +124,12 @@ class BackupController extends ChangeNotifier implements BackupService {
   final Future<Database> Function() openDatabase;
   final SettingsStore settingsStore;
   final FolderStorage storage;
+
+  /// Dónde se guarda quién es este móvil (025).
+  final DeviceStore deviceStore;
+
+  /// El modelo del móvil, para su nombre de serie (025, RF-1).
+  final Future<String?> Function() deviceModel;
   final DatabaseFactory? factory;
   final DateTime Function() _clock;
   final Future<Directory> Function() _tempDir;
@@ -97,12 +153,40 @@ class BackupController extends ChangeNotifier implements BackupService {
   /// cambió mientras se hacía la copia.
   int _changes = 0;
 
-  /// Lee los ajustes guardados. Llamar una vez al arrancar.
+  DeviceIdentity? _device;
+
+  /// Este móvil (025); nulo hasta que termine [load].
+  @override
+  DeviceIdentity? get device => _device;
+
+  @override
+  Future<String?> renameDevice(String name) async {
+    final clean = cleanDeviceName(name);
+    if (clean == null) return invalidDeviceNameMessage;
+    final renamed = (await _ensureDevice()).copyWith(name: clean);
+    _device = renamed;
+    notifyListeners();
+    try {
+      await deviceStore.save(renamed);
+    } on FileSystemException {
+      // Vale para esta sesión; al reabrir volvería el nombre anterior.
+    }
+    return null;
+  }
+
+  /// Lee los ajustes guardados y quién es este móvil. Llamar una vez al
+  /// arrancar.
   @override
   Future<void> load() async {
     _settings = await settingsStore.load();
+    await _ensureDevice();
     notifyListeners();
+    // Al abrir la app, ¿hay algo nuevo de otro móvil? (025, RF-9)
+    unawaited(checkOtherDevices());
   }
+
+  Future<DeviceIdentity> _ensureDevice() async =>
+      _device ??= await deviceStore.loadOrCreate(deviceModel);
 
   Future<void> _update(BackupSettings s) async {
     _settings = s;
@@ -172,8 +256,14 @@ class BackupController extends ChangeNotifier implements BackupService {
       await createBackupFile(db, local, factory: factory);
       final bytes = await File(local).readAsBytes();
 
+      final device = await _ensureDevice();
       final names = (await storage.listFiles(folder)).toSet();
-      final name = backupFileName(_clock(), kind: kind, existing: names);
+      final name = backupFileName(
+        _clock(),
+        kind: kind,
+        existing: names,
+        device: device,
+      );
       await storage.writeFile(folder, name, bytes);
       // RF-7: la copia no cuenta hasta leerla de vuelta y ver que es igual.
       final written = await storage.readFile(folder, name);
@@ -182,7 +272,10 @@ class BackupController extends ChangeNotifier implements BackupService {
         throw const StorageException(StorageProblem.other);
       }
       if (kind == BackupKind.automatic) {
-        for (final old in backupsToPrune({...names, name})) {
+        for (final old in backupsToPrune({
+          ...names,
+          name,
+        }, deviceId: device.id)) {
           await _deleteQuietly(folder, old);
         }
       }
@@ -332,6 +425,145 @@ class BackupController extends ChangeNotifier implements BackupService {
     }
   }
 
+  // ---- Copias de otros móviles (025) ------------------------------------
+
+  OtherDeviceOffer? _offer;
+  @override
+  OtherDeviceOffer? get offer => _offer;
+
+  /// Las copias de otros móviles que había en la última búsqueda; sirven
+  /// para dar por vistas las más antiguas al cargar o descartar (RF-16).
+  List<BackupInfo> _othersSeenInCheck = const [];
+
+  bool _checking = false;
+
+  void _setOffer(OtherDeviceOffer? o) {
+    _offer = o;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> checkOtherDevices() async {
+    final folder = _settings.folder;
+    if (folder == null) {
+      if (_offer != null) _setOffer(null);
+      return;
+    }
+    // Mientras se copia o se restaura no se mira: se volverá a mirar.
+    if (_busy || _checking) return;
+    _checking = true;
+    final tmp = await _tempDir();
+    try {
+      final device = await _ensureDevice();
+      final others = [
+        for (final b in sortedBackups(await storage.listFiles(folder)))
+          if (b.kind == BackupKind.automatic &&
+              b.deviceId != null &&
+              b.deviceId != device.id)
+            b,
+      ];
+      _othersSeenInCheck = others;
+      final newest = others
+          .where((b) => b.orderKey.compareTo(device.seen[b.deviceId] ?? '') > 0)
+          .firstOrNull;
+      if (newest == null) {
+        if (_offer != null) _setOffer(null);
+        return;
+      }
+      final BackupData incoming;
+      try {
+        incoming = await readBackupData(
+          await _download(folder, newest.name, tmp),
+          factory: factory,
+        );
+      } on BackupException catch (e) {
+        if (e.problem == BackupProblem.tooNew) {
+          // Se avisa, pero no se da por vista: se ofrecerá al actualizar.
+          _setOffer(OtherDeviceOffer(newest, tooNew: true));
+        } else {
+          // Dañada: no se ofrece ni se vuelve a intentar con esa.
+          await _markSeen(newest);
+          if (_offer != null) _setOffer(null);
+        }
+        return;
+      }
+      final db = await openDatabase();
+      final current = BackupData(
+        await readAllDays(db),
+        await readExtras(
+          db,
+          withItems: true,
+          withSaved: true,
+          withVacation: true,
+          withImported: true,
+          withCompany: true,
+        ),
+      );
+      final diff = compareBackups(current, incoming);
+      if (diff.isEmpty) {
+        await _markSeen(newest); // RF-10: ida y vuelta, sin aviso.
+        if (_offer != null) _setOffer(null);
+        return;
+      }
+      _setOffer(
+        OtherDeviceOffer(newest, diff: diff, localChanges: _settings.dirty),
+      );
+    } catch (_) {
+      // Carpeta no disponible u otro fallo: sin aviso; los fallos de copia
+      // ya se avisan aparte (003, RF-8).
+    } finally {
+      _checking = false;
+      await _deleteDir(tmp);
+    }
+  }
+
+  @override
+  Future<BackupOutcome> loadOffer() async {
+    final o = _offer;
+    if (o == null || o.tooNew) {
+      return const BackupOutcome.fail('No hay ninguna copia que cargar.');
+    }
+    final r = await restoreFromFolder(o.info.name);
+    if (r.ok) {
+      await _markSeen(o.info);
+      _setOffer(null);
+    }
+    return r;
+  }
+
+  @override
+  Future<void> dismissOffer() async {
+    final o = _offer;
+    if (o == null) return;
+    await _markSeen(o.info);
+    _setOffer(null);
+  }
+
+  /// Da por vista [info] y, de los demás móviles, sus copias hasta esa misma
+  /// hora (RF-15, RF-16).
+  Future<void> _markSeen(BackupInfo info) async {
+    final device = await _ensureDevice();
+    final seen = {...device.seen};
+    void see(BackupInfo b) {
+      final id = b.deviceId!;
+      if (b.orderKey.compareTo(seen[id] ?? '') > 0) seen[id] = b.orderKey;
+    }
+
+    see(info);
+    for (final b in _othersSeenInCheck) {
+      if (b.deviceId != info.deviceId && !b.takenAt.isAfter(info.takenAt)) {
+        see(b);
+      }
+    }
+    final updated = device.copyWith(seen: seen);
+    _device = updated;
+    try {
+      await deviceStore.save(updated);
+    } on FileSystemException {
+      // Vale para esta sesión.
+    }
+  }
+
   // ---- Exportar ---------------------------------------------------------
 
   /// Crea el CSV, lo guarda en la carpeta si la hay y abre «Compartir»
@@ -412,7 +644,7 @@ class BackupController extends ChangeNotifier implements BackupService {
       final local = p.join(tmp.path, 'copia-a-compartir.db');
       await createBackupFile(db, local, factory: factory);
       final bytes = await File(local).readAsBytes();
-      final name = backupFileName(_clock());
+      final name = backupFileName(_clock(), device: await _ensureDevice());
       await storage.shareFile(name, 'application/octet-stream', bytes);
       await _update(_settings.copyWith(lastShared: _clock));
       return BackupOutcome.ok(name);

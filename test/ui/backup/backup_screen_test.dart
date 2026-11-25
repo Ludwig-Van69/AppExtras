@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:horas_y_vacaciones/data/app_settings.dart';
+import 'package:horas_y_vacaciones/domain/device_identity.dart';
 import 'package:horas_y_vacaciones/domain/backup_names.dart';
 import 'package:horas_y_vacaciones/ui/app.dart';
 import 'package:horas_y_vacaciones/ui/backup/backup_controller.dart';
@@ -71,6 +72,9 @@ Future<void> _openRestore(WidgetTester tester) async {
   await tester.tap(find.text('Restaurar una copia'));
   await tester.pumpAndSettle();
 }
+
+const _me = DeviceIdentity(id: 'abc123', name: 'moto g75');
+const _other = DeviceIdentity(id: 'x7b2m1', name: 'Móvil trabajo');
 
 void main() {
   setUp(() => _waitForSaves = null);
@@ -175,43 +179,92 @@ void main() {
       }
     });
 
-    testWidgets('explica cómo llevar las copias al ordenador', (tester) async {
+    testWidgets('explica cómo llevar las copias al ordenador o a otro móvil '
+        '(025, RF-19)', (tester) async {
       await _open(tester);
       await tester.tap(
-        find.byTooltip('Más información: Llevar las copias al ordenador'),
+        find.byTooltip('Más información: Llevar las copias a otro sitio'),
       );
       await tester.pumpAndSettle();
       expect(find.textContaining('Solo enviar'), findsOneWidget);
+      expect(
+        find.textContaining('«Enviar y recibir» en ambos'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('por turnos'), findsOneWidget);
+    });
+  });
+
+  group('este móvil (025, RF-2, RF-3)', () {
+    testWidgets('muestra el nombre y se cambia', (tester) async {
+      await _open(tester, settings: _good());
+      expect(find.text('Este móvil'), findsOneWidget);
+      expect(find.text('moto g75'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('cambiar-nombre-movil')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('nombre-movil')),
+        '  Móvil  trabajo ',
+      );
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(fake.device!.name, 'Móvil trabajo');
+      expect(find.text('Móvil trabajo'), findsOneWidget);
+      expect(find.text('Nombre de este móvil'), findsNothing);
+    });
+
+    testWidgets('un nombre que no vale no se guarda y dice por qué', (
+      tester,
+    ) async {
+      await _open(tester, settings: _good());
+      await tester.tap(find.byKey(const ValueKey('cambiar-nombre-movil')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('nombre-movil')),
+        'móvil_1',
+      );
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Usa de 1 a 24 letras, números, espacios o guiones'),
+        findsOneWidget,
+      );
+      expect(fake.device!.name, 'moto g75');
+      // Cancelar deja el nombre como estaba.
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+      expect(find.text('moto g75'), findsOneWidget);
     });
   });
 
   group('restaurar', () {
     final copies = [
-      listing(DateTime(2026, 11, 10, 18, 42, 5), 21),
-      listing(DateTime(2026, 11, 3, 9, 5, 0), 1),
+      listing(DateTime(2026, 11, 10, 18, 42, 5), 21, device: _me),
+      listing(DateTime(2026, 11, 3, 9, 5, 0), 1, device: _other),
       listing(
         DateTime(2026, 10, 30, 12, 0, 0),
         4,
         kind: BackupKind.beforeRestore,
+        device: _me,
       ),
       listing(DateTime(2025, 12, 1, 8, 0, 0), null),
     ];
 
-    testWidgets('lista las copias con fecha y número de días (RF-12)', (
-      tester,
-    ) async {
+    testWidgets('lista las copias con fecha, móvil y número de días '
+        '(RF-12; 025, RF-7, RF-8)', (tester) async {
       await _open(tester, settings: _good());
       fake.listing = copies;
       await _openRestore(tester);
       expect(find.text('Hoy, 18:42'), findsOneWidget);
-      expect(find.text('21 días con horas'), findsOneWidget);
+      expect(find.text('Este móvil · 21 días con horas'), findsOneWidget);
       expect(find.text('El 3 de noviembre, 09:05'), findsOneWidget);
-      expect(find.text('1 día con horas'), findsOneWidget);
+      expect(find.text('Móvil trabajo · 1 día con horas'), findsOneWidget);
+      expect(find.text('Este móvil · 4 días con horas'), findsOneWidget);
       expect(
         find.text('El 30 de octubre, 12:00 · antes de restaurar'),
         findsOneWidget,
       );
-      expect(find.text('No se puede leer esta copia'), findsOneWidget);
+      expect(find.text('Copia antigua · no se puede leer'), findsOneWidget);
     });
 
     testWidgets(
@@ -240,7 +293,7 @@ void main() {
       await _open(tester, settings: _good());
       fake.listing = copies;
       await _openRestore(tester);
-      await tester.tap(find.text('No se puede leer esta copia'));
+      await tester.tap(find.text('Copia antigua · no se puede leer'));
       await tester.pumpAndSettle();
       expect(
         find.textContaining('la copia del 1 de diciembre de 2025'),
@@ -263,7 +316,7 @@ void main() {
 
         expect(saved, isTrue);
         expect(fake.calls, [
-          'restoreFromFolder:horas-copia-2026-11-03_09-05-00.db',
+          'restoreFromFolder:horas-copia-2026-11-03_09-05-00_x7b2m1_Móvil trabajo.db',
         ]);
         expect(find.text('pantalla anterior'), findsOneWidget);
         expect(find.text('Copia restaurada.'), findsOneWidget);

@@ -10,6 +10,7 @@ import 'package:horas_y_vacaciones/data/app_database.dart';
 import 'package:horas_y_vacaciones/data/app_settings.dart';
 import 'package:horas_y_vacaciones/data/backup_file.dart';
 import 'package:horas_y_vacaciones/data/day_entry_repository.dart';
+import 'package:horas_y_vacaciones/data/device_store.dart';
 import 'package:horas_y_vacaciones/data/folder_storage.dart';
 import 'package:horas_y_vacaciones/domain/backup_names.dart';
 import 'package:horas_y_vacaciones/domain/day_entry.dart';
@@ -38,6 +39,7 @@ void main() {
   late Database db;
   late SqliteDayEntryRepository repo;
   late SettingsStore store;
+  late DeviceStore devices;
   late HookStorage storage;
   late BackupController c;
   late DateTime now;
@@ -54,12 +56,17 @@ void main() {
       clock: () => DateTime.utc(2026, 11, 6),
     );
     store = SettingsStore(File(p.join(dir.path, settingsFileName)));
+    // Este móvil, fijo para que los nombres de las copias se puedan comprobar.
+    final deviceFile = File(p.join(dir.path, deviceFileName));
+    await deviceFile.writeAsString('{"id":"abc123","name":"Prueba"}');
+    devices = DeviceStore(deviceFile);
     storage = HookStorage();
     now = DateTime(2026, 11, 10, 18, 0, 0);
     c = BackupController(
       openDatabase: () async => db,
       settingsStore: store,
       storage: storage,
+      deviceStore: devices,
       factory: databaseFactoryFfi,
       clock: () => now,
     );
@@ -123,6 +130,7 @@ void main() {
         openDatabase: () async => db,
         settingsStore: store,
         storage: storage,
+        deviceStore: devices,
       );
       await other.load();
       expect(other.settings.folder, folder);
@@ -143,7 +151,9 @@ void main() {
       final result = await c.onLeavingApp();
 
       expect(result!.ok, isTrue);
-      expect(backupNames(), ['horas-copia-2026-11-10_18-00-00.db']);
+      expect(backupNames(), [
+        'horas-copia-2026-11-10_18-00-00_abc123_Prueba.db',
+      ]);
       expect(c.settings.lastSuccess, now);
       expect(c.settings.lastError, isNull);
       expect(c.settings.dirty, isFalse);
@@ -206,8 +216,8 @@ void main() {
       await c.backupNow();
       await c.backupNow();
       expect(backupNames(), [
-        'horas-copia-2026-11-10_18-00-00-2.db',
-        'horas-copia-2026-11-10_18-00-00.db',
+        'horas-copia-2026-11-10_18-00-00-2_abc123_Prueba.db',
+        'horas-copia-2026-11-10_18-00-00_abc123_Prueba.db',
       ]);
     });
 
@@ -222,11 +232,91 @@ void main() {
       }
       final automatic = backupNames().where((n) => n.startsWith('horas-copia'));
       expect(automatic, hasLength(10));
-      expect(automatic.first, 'horas-copia-2026-11-10_18-03-00.db');
+      expect(
+        automatic.first,
+        'horas-copia-2026-11-10_18-03-00_abc123_Prueba.db',
+      );
       expect(storage.files(folder), contains('foto.jpg'));
       expect(
         storage.files(folder),
         contains('horas-antes-de-restaurar-2026-01-01_10-00-00.db'),
+      );
+    });
+
+    test('solo borra las de este móvil: nunca las de otro ni las antiguas '
+        '(025, RF-6)', () async {
+      await withFolder();
+      final theirs = [
+        for (var i = 0; i < 12; i++)
+          'horas-copia-2026-10-${(i + 1).toString().padLeft(2, '0')}'
+              '_10-00-00_x7b2m1_Otro.db',
+      ];
+      final old = [
+        for (var i = 0; i < 12; i++)
+          'horas-copia-2026-09-${(i + 1).toString().padLeft(2, '0')}'
+              '_10-00-00.db',
+      ];
+      for (final n in [...theirs, ...old]) {
+        storage.files(folder)[n] = Uint8List.fromList([1]);
+      }
+      for (var i = 0; i < 11; i++) {
+        now = now.add(const Duration(minutes: 1));
+        await c.backupNow();
+      }
+      final names = storage.files(folder).keys;
+      expect(names.where((n) => n.contains('_abc123_')), hasLength(10));
+      expect(names, containsAll([...theirs, ...old]));
+    });
+
+    test('la copia previa a restaurar y la compartida llevan el móvil '
+        '(025, RF-5)', () async {
+      await withFolder();
+      await c.backupNow();
+      now = now.add(const Duration(hours: 1));
+      await c.restoreFromFolder(
+        'horas-copia-2026-11-10_18-00-00_abc123_Prueba.db',
+      );
+      expect(
+        storage.files(folder),
+        contains(
+          'horas-antes-de-restaurar-2026-11-10_19-00-00_abc123_Prueba.db',
+        ),
+      );
+      await c.shareBackup();
+      expect(parseBackupName(storage.shared.single.name)!.deviceId, 'abc123');
+    });
+
+    test('cambiar el nombre se guarda y sale en las copias nuevas '
+        '(025, RF-2, RF-3)', () async {
+      await withFolder();
+      expect(await c.renameDevice('móvil_1'), isNotNull);
+      expect(c.device!.name, 'Prueba');
+      expect(await c.renameDevice(' Trabajo '), isNull);
+      expect(c.device!.name, 'Trabajo');
+      expect(c.device!.id, 'abc123');
+      await c.backupNow();
+      expect(backupNames().single, endsWith('_abc123_Trabajo.db'));
+      final reread = await devices.loadOrCreate(() async => null);
+      expect(reread.name, 'Trabajo');
+    });
+
+    test('sin archivo del móvil, crea uno con el modelo (025, RF-1)', () async {
+      final fresh = BackupController(
+        openDatabase: () async => db,
+        settingsStore: store,
+        storage: storage,
+        deviceStore: DeviceStore(File(p.join(dir.path, 'nuevo.json'))),
+        deviceModel: () async => 'moto g75',
+        factory: databaseFactoryFfi,
+        clock: () => now,
+      );
+      await fresh.load();
+      expect(fresh.device!.name, 'moto g75');
+      await fresh.chooseFolder();
+      await fresh.backupNow();
+      expect(
+        storage.files(folder).keys.single,
+        endsWith('_${fresh.device!.id}_moto g75.db'),
       );
     });
 
@@ -336,8 +426,8 @@ void main() {
         final list = await c.listBackups();
 
         expect(list.map((b) => b.info.name), [
-          'horas-copia-2026-11-10_19-00-00.db',
-          'horas-copia-2026-11-10_18-00-00.db',
+          'horas-copia-2026-11-10_19-00-00_abc123_Prueba.db',
+          'horas-copia-2026-11-10_18-00-00_abc123_Prueba.db',
           'horas-copia-2026-01-01_10-00-00.db',
         ]);
         expect(list.map((b) => b.dayCount), [3, 1, null]);
@@ -353,7 +443,7 @@ void main() {
         final restoredBefore = c.restoredCount;
 
         final r = await c.restoreFromFolder(
-          'horas-copia-2026-11-10_18-00-00.db',
+          'horas-copia-2026-11-10_18-00-00_abc123_Prueba.db',
         );
 
         expect(r.ok, isTrue);
@@ -361,7 +451,7 @@ void main() {
         expect(c.restoredCount, restoredBefore + 1);
         final previous = storage.files(
           folder,
-        )['horas-antes-de-restaurar-2026-11-10_19-00-00.db']!;
+        )['horas-antes-de-restaurar-2026-11-10_19-00-00_abc123_Prueba.db']!;
         final file = File(p.join(dir.path, 'previa.db'))
           ..writeAsBytesSync(previous);
         final kept = await readBackupFile(
@@ -377,7 +467,9 @@ void main() {
       await withFolder();
       await makeOldBackup();
       now = now.add(const Duration(hours: 1));
-      await c.restoreFromFolder('horas-copia-2026-11-10_18-00-00.db');
+      await c.restoreFromFolder(
+        'horas-copia-2026-11-10_18-00-00_abc123_Prueba.db',
+      );
       for (var i = 0; i < 12; i++) {
         now = now.add(const Duration(minutes: 1));
         await c.backupNow();
@@ -412,7 +504,9 @@ void main() {
       await makeOldBackup();
       storage.failWrites = StorageProblem.other;
 
-      final r = await c.restoreFromFolder('horas-copia-2026-11-10_18-00-00.db');
+      final r = await c.restoreFromFolder(
+        'horas-copia-2026-11-10_18-00-00_abc123_Prueba.db',
+      );
 
       expect(r.ok, isFalse);
       expect(r.message, contains('no se ha restaurado nada'));
@@ -446,6 +540,8 @@ void main() {
             await createSchemaV6(d);
             await createSchemaV7(d);
             await createSchemaV8(d);
+            await createSchemaV9(d);
+            await createSchemaV10(d);
           },
         ),
       );

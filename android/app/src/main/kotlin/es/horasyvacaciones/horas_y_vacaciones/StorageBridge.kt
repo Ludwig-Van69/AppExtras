@@ -3,6 +3,7 @@ package es.horasyvacaciones.horas_y_vacaciones
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
@@ -92,6 +93,8 @@ class StorageBridge(
                 shareFile(arg(call, "name"), arg(call, "mime"), bytes(call))
                 null
             }
+            // El modelo, para el nombre de serie del móvil en las copias (025).
+            "deviceModel" -> result.success(Build.MODEL)
             else -> result.notImplemented()
         }
     }

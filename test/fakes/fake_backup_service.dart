@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:horas_y_vacaciones/data/app_settings.dart';
 import 'package:horas_y_vacaciones/domain/backup_names.dart';
+import 'package:horas_y_vacaciones/domain/device_identity.dart';
 import 'package:horas_y_vacaciones/ui/backup/backup_controller.dart';
 
 /// Copias falsas para los tests de pantalla: devuelven lo que se les diga y
@@ -117,6 +118,48 @@ class FakeBackupService extends ChangeNotifier implements BackupService {
     }
     return shareResult;
   }
+
+  @override
+  DeviceIdentity? device = const DeviceIdentity(id: 'abc123', name: 'moto g75');
+
+  OtherDeviceOffer? _offer;
+  @override
+  OtherDeviceOffer? get offer => _offer;
+  set offer(OtherDeviceOffer? o) {
+    _offer = o;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> checkOtherDevices() async => calls.add('checkOtherDevices');
+
+  BackupOutcome loadResult = const BackupOutcome.ok('Copia restaurada.');
+
+  @override
+  Future<BackupOutcome> loadOffer() async {
+    calls.add('loadOffer');
+    if (loadResult.ok) {
+      restoredCount++;
+      offer = null;
+    }
+    return loadResult;
+  }
+
+  @override
+  Future<void> dismissOffer() async {
+    calls.add('dismissOffer');
+    offer = null;
+  }
+
+  @override
+  Future<String?> renameDevice(String name) async {
+    calls.add('renameDevice:$name');
+    final clean = cleanDeviceName(name);
+    if (clean == null) return invalidDeviceNameMessage;
+    device = device!.copyWith(name: clean);
+    notifyListeners();
+    return null;
+  }
 }
 
 /// Una copia de la lista, con datos inventados.
@@ -124,10 +167,18 @@ BackupListing listing(
   DateTime takenAt,
   int? days, {
   BackupKind kind = BackupKind.automatic,
+  DeviceIdentity? device,
 }) {
-  String two(int v) => v.toString().padLeft(2, '0');
-  final name =
-      '${kind.prefix}${takenAt.year}-${two(takenAt.month)}-${two(takenAt.day)}'
-      '_${two(takenAt.hour)}-${two(takenAt.minute)}-${two(takenAt.second)}.db';
-  return BackupListing(BackupInfo(name, kind, takenAt, 1), days);
+  final name = backupFileName(takenAt, kind: kind, device: device);
+  return BackupListing(
+    BackupInfo(
+      name,
+      kind,
+      takenAt,
+      1,
+      deviceId: device?.id,
+      deviceName: device?.name,
+    ),
+    days,
+  );
 }

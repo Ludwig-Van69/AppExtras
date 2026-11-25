@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:horas_y_vacaciones/domain/backup_names.dart';
+import 'package:horas_y_vacaciones/domain/device_identity.dart';
 
 void main() {
   final t = DateTime(2026, 3, 7, 8, 5, 9);
+  const me = DeviceIdentity(id: 'abc123', name: 'moto g75');
+  const other = DeviceIdentity(id: 'x7b2m1', name: 'Móvil trabajo');
 
   group('backupFileName (RF-5)', () {
     test('copia automática con fecha y hora', () {
@@ -82,31 +85,114 @@ void main() {
     });
   });
 
-  group('backupsToPrune (RF-6)', () {
-    List<String> autos(int n) => [
-      for (var i = 0; i < n; i++) backupFileName(DateTime(2026, 1, 1 + i)),
+  group('con el móvil (025, RF-5, RF-7)', () {
+    test('el nombre lleva código y nombre del móvil', () {
+      expect(
+        backupFileName(t, device: me),
+        'horas-copia-2026-03-07_08-05-09_abc123_moto g75.db',
+      );
+      expect(
+        backupFileName(t, kind: BackupKind.beforeRestore, device: other),
+        'horas-antes-de-restaurar-2026-03-07_08-05-09_x7b2m1_Móvil trabajo.db',
+      );
+    });
+
+    test('si se repite el segundo, el -2 va tras la hora', () {
+      final first = backupFileName(t, device: me);
+      expect(
+        backupFileName(t, device: me, existing: {first}),
+        'horas-copia-2026-03-07_08-05-09-2_abc123_moto g75.db',
+      );
+      // Otro móvil en el mismo segundo no choca.
+      expect(
+        backupFileName(t, device: other, existing: {first}),
+        'horas-copia-2026-03-07_08-05-09_x7b2m1_Móvil trabajo.db',
+      );
+    });
+
+    test('se lee de vuelta el móvil; las antiguas no tienen', () {
+      final n = backupFileName(
+        t,
+        device: me,
+        existing: {backupFileName(t, device: me)},
+      );
+      final info = parseBackupName(n)!;
+      expect(info.deviceId, 'abc123');
+      expect(info.deviceName, 'moto g75');
+      expect(info.takenAt, t);
+      expect(info.copyNumber, 2);
+      final old = parseBackupName(backupFileName(t))!;
+      expect(old.deviceId, isNull);
+      expect(old.deviceName, isNull);
+    });
+
+    test('rechaza móviles mal formados', () {
+      for (final n in [
+        'horas-copia-2026-03-07_08-05-09_ABC123_x.db',
+        'horas-copia-2026-03-07_08-05-09_abc12_x.db',
+        'horas-copia-2026-03-07_08-05-09_abc123_.db',
+        'horas-copia-2026-03-07_08-05-09_abc123_a_b.db',
+        'horas-copia-2026-03-07_08-05-09_abc123_ x.db',
+        'horas-copia-2026-03-07_08-05-09_abc123_${'x' * 25}.db',
+        'horas-copia-2026-03-07_08-05-09-1_abc123_x.db',
+      ]) {
+        expect(parseBackupName(n), isNull, reason: n);
+      }
+    });
+
+    test('orderKey ordena por fecha y número de copia', () {
+      final a = parseBackupName(backupFileName(t, device: me))!;
+      final b = parseBackupName(
+        backupFileName(t, device: me, existing: {a.name}),
+      )!;
+      final c = parseBackupName(
+        backupFileName(t.add(const Duration(seconds: 1)), device: me),
+      )!;
+      expect(a.orderKey, '2026-03-07_08-05-09-0001');
+      expect(a.orderKey.compareTo(b.orderKey), lessThan(0));
+      expect(b.orderKey.compareTo(c.orderKey), lessThan(0));
+    });
+  });
+
+  group('backupsToPrune (RF-6; 025, RF-6)', () {
+    List<String> autos(int n, [DeviceIdentity? d = me]) => [
+      for (var i = 0; i < n; i++)
+        backupFileName(DateTime(2026, 1, 1 + i), device: d),
     ];
+    List<String> prune(Iterable<String> names, {int keep = backupsToKeep}) =>
+        backupsToPrune(names, deviceId: me.id, keep: keep);
 
     test('con 10 o menos no borra nada', () {
-      expect(backupsToPrune(autos(10)), isEmpty);
+      expect(prune(autos(10)), isEmpty);
     });
 
     test('con 13 borra las 3 más antiguas', () {
       final names = autos(13);
-      expect(backupsToPrune(names.reversed), names.take(3).toList());
+      expect(prune(names.reversed), names.take(3).toList());
     });
 
     test('nunca borra copias previas a restaurar ni archivos ajenos', () {
       final names = [
         ...autos(11),
-        backupFileName(DateTime(2020), kind: BackupKind.beforeRestore),
+        backupFileName(
+          DateTime(2020),
+          kind: BackupKind.beforeRestore,
+          device: me,
+        ),
         'notas.txt',
       ];
-      expect(backupsToPrune(names), [names.first]);
+      expect(prune(names), [names.first]);
     });
 
     test('se puede elegir cuántas guardar', () {
-      expect(backupsToPrune(autos(3), keep: 1), autos(2));
+      expect(prune(autos(3), keep: 1), autos(2));
+    });
+
+    test('solo borra las de este móvil: ni las de otro ni las antiguas', () {
+      final mine = autos(12);
+      final theirs = autos(15, other);
+      final old = autos(14, null);
+      expect(prune([...theirs, ...old, ...mine]), mine.take(2).toList());
     });
   });
 }

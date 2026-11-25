@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import '../data/device_store.dart';
 import '../data/app_database.dart';
 import '../data/app_settings.dart';
+import '../data/company_repository.dart';
 import '../data/day_entry_repository.dart';
 import '../data/extras_repository.dart';
 import '../data/folder_storage.dart';
@@ -18,6 +20,7 @@ import 'first_steps/first_steps_controller.dart';
 import 'holidays/holidays_controller.dart';
 import 'money/money_controller.dart';
 import 'backup/backup_controller.dart';
+import 'company/company_controller.dart';
 import 'home_shell.dart';
 import 'theme/app_theme.dart';
 import 'theme/decor_colors.dart';
@@ -38,11 +41,15 @@ class HoursAndVacationApp extends StatefulWidget {
     this.prefs,
     this.vacation,
     this.firstSteps,
+    this.company,
   });
 
   /// La tarjeta «Primeros pasos» (024). Si no se indica y se usa la base de
   /// datos real, la de verdad; con un repositorio de prueba, sin tarjeta.
   final FirstStepsController? firstSteps;
+
+  /// La empresa (026), igual que [money].
+  final CompanyController? company;
 
   /// Las vacaciones, igual que [money].
   final VacationController? vacation;
@@ -92,6 +99,7 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
             path,
             storage: ChannelFolderStorage(),
             settings: SettingsStore.inAppFolder(),
+            device: DeviceStore.inAppFolder(),
           ),
         ),
       );
@@ -99,6 +107,20 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
   late final MoneyController? _money = widget.money ?? _realMoney();
   late final ExtrasController? _extras = widget.extras ?? _realExtras();
   late final VacationController? _vacation = widget.vacation ?? _realVacation();
+
+  late final CompanyController? _company = widget.company ?? _realCompany();
+
+  CompanyController? _realCompany() {
+    final repo = _repository;
+    if (widget.repository != null || repo is! SqliteDayEntryRepository) {
+      return null;
+    }
+    return CompanyController(
+      repository: SqliteCompanyRepository(() => repo.database),
+      clock: widget.clock,
+      onChanged: () async => _backup?.markChanged(),
+    )..load();
+  }
 
   VacationController? _realVacation() {
     final repo = _repository;
@@ -108,6 +130,7 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
     return VacationController(
       repository: SqliteVacationRepository(() => repo.database),
       clock: widget.clock,
+      onChanged: () async => _backup?.markChanged(),
       calendar: _holidays == null ? null : () => _holidays.calendar,
     )..load();
   }
@@ -120,6 +143,7 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
     return ExtrasController(
       repository: SqliteExtrasRepository(() => repo.database),
       clock: widget.clock,
+      onChanged: () async => _backup?.markChanged(),
     )..load();
   }
 
@@ -136,6 +160,7 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
       clock: widget.clock,
       loadHidden: prefs.loadHideAmounts,
       saveHidden: prefs.saveHideAmounts,
+      onChanged: () async => _backup?.markChanged(),
     )..load();
   }
 
@@ -154,6 +179,7 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
       openDatabase: () => repo.database,
       settingsStore: SettingsStore.inAppFolder(),
       storage: ChannelFolderStorage(),
+      deviceStore: DeviceStore.inAppFolder(),
     )..load();
   }
 
@@ -268,6 +294,7 @@ class _HoursAndVacationAppState extends State<HoursAndVacationApp>
                   extras: _extras,
                   vacation: _vacation,
                   firstSteps: _firstSteps,
+                  company: _company,
                 ),
           ),
         ),

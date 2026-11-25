@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:horas_y_vacaciones/data/device_store.dart';
 import 'package:horas_y_vacaciones/data/app_database.dart';
 import 'package:horas_y_vacaciones/data/app_settings.dart';
 import 'package:horas_y_vacaciones/data/folder_storage.dart';
@@ -63,6 +64,24 @@ void main() {
     final names = storage.files('content://carpeta').keys.toList();
     expect(names, hasLength(1));
     expect(parseBackupName(names.single)!.kind, BackupKind.beforeRestore);
+  });
+
+  test('la copia de la carpeta lleva el móvil (025, RF-5)', () async {
+    await settings.save(const BackupSettings(folder: 'content://carpeta'));
+    final deviceFile = File(p.join(dir.path, 'movil.json'));
+    await deviceFile.writeAsString('{"id":"abc123","name":"Prueba"}');
+    await pre.backupBeforeUpgrade(
+      file,
+      storage: storage,
+      settings: settings,
+      device: DeviceStore(deviceFile),
+      clock: () => now,
+    );
+    final info = parseBackupName(
+      storage.files('content://carpeta').keys.single,
+    )!;
+    expect(info.kind, BackupKind.beforeRestore);
+    expect(info.deviceId, 'abc123');
   });
 
   test(

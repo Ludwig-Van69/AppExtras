@@ -1,7 +1,7 @@
 name: horas_y_vacaciones
 description: "App Android para apuntar horas extra y controlar lo que se debe y las vacaciones."
 publish_to: 'none'
-version: 0.24.0+39
+version: 0.26.0+41
 
 environment:
   sdk: ^3.13.7

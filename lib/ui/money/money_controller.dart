@@ -22,12 +22,14 @@ class MoneyController extends ChangeNotifier {
     DateTime Function()? clock,
     Future<bool> Function()? loadHidden,
     Future<void> Function(bool)? saveHidden,
+    Future<void> Function()? onChanged,
   }) : _days = days,
        _money = money,
        _saved = saved,
        _clock = clock ?? DateTime.now,
        _loadHidden = loadHidden,
-       _saveHidden = saveHidden;
+       _saveHidden = saveHidden,
+       _onChanged = onChanged;
 
   final DayEntryRepository _days;
   final MoneyRepository _money;
@@ -37,6 +39,9 @@ class MoneyController extends ChangeNotifier {
   final DateTime Function() _clock;
   final Future<bool> Function()? _loadHidden;
   final Future<void> Function(bool)? _saveHidden;
+
+  /// Avisa a las copias de que hay cambios sin copiar (003, RF-4).
+  final Future<void> Function()? _onChanged;
 
   MoneyStatus status = MoneyStatus.loading;
   MoneyOverview overview = MoneyOverview.compute(
@@ -263,6 +268,8 @@ class MoneyController extends ChangeNotifier {
     try {
       await action();
       saveFailed = false;
+      // Si avisar a las copias falla, lo guardado sigue bien guardado.
+      await _onChanged?.call().catchError((Object _) {});
     } catch (_) {
       saveFailed = true;
     }

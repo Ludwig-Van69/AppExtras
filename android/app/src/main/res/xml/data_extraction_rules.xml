@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copia de Android desde la versión 12, en la nube y al pasar a un móvil
+     nuevo (003, RF-22). Se guarda todo salvo el código de este móvil (025,
+     RF-4). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="movil.json" />
+        <exclude domain="database" path="movil.json.tmp" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="movil.json" />
+        <exclude domain="database" path="movil.json.tmp" />
+    </device-transfer>
+</data-extraction-rules>

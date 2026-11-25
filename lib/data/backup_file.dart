@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:sqflite/sqflite.dart';
 
+import '../domain/company.dart';
 import '../domain/day_entry.dart';
 import '../domain/day_kind.dart';
 import '../domain/extras.dart';
@@ -10,6 +11,7 @@ import '../domain/money.dart';
 import '../domain/saved_hours.dart';
 import '../domain/vacations.dart';
 import 'app_database.dart';
+import 'company_repository.dart';
 import 'extras_repository.dart';
 import 'money_repository.dart';
 import 'saved_hours_repository.dart';
@@ -65,6 +67,7 @@ class BackupExtras {
     this.savedMoves,
     this.vacation,
     this.importedMonths,
+    this.company,
   ]);
   final List<Rate> rates;
   final List<MonthRecord> months;
@@ -82,6 +85,10 @@ class BackupExtras {
   /// Meses del Excel; nulo en las copias v1-v6, que no los tienen. Al
   /// restaurar una de esas, se conservan los actuales (016, RF-8).
   final List<ImportedMonth>? importedMonths;
+
+  /// La empresa; nulo en las copias v1-v9, que no la tienen. Al restaurar
+  /// una de esas, se conserva la actual (026, RF-9).
+  final Company? company;
 }
 
 /// Las vacaciones de una copia v5 o posterior (en la v6, con medios días): ajustes (nulos si no se configuraron) y
@@ -124,6 +131,7 @@ Future<void> createBackupFile(
             withSaved: version >= 4,
             withVacation: version >= 5,
             withImported: version >= 7,
+            withCompany: version >= 10,
           )
         : null;
     if (!_sameDays(copied.days, original) ||
@@ -174,6 +182,7 @@ Future<BackupData> readBackupData(
               withSaved: version >= 4,
               withVacation: version >= 5,
               withImported: version >= 7,
+              withCompany: version >= 10,
             )
           : null,
     );
@@ -239,6 +248,8 @@ Future<void> restoreDays(
         await txn.insert('imported_months', importedMonthToRow(m));
       }
     }
+    final company = extras.company;
+    if (company != null) await writeCompany(txn, company);
     final vacation = extras.vacation;
     if (vacation != null) {
       await writeVacationSettings(txn, vacation.settings);
@@ -309,6 +320,7 @@ Future<BackupExtras> readExtras(
   bool withSaved = false,
   bool withVacation = false,
   bool withImported = false,
+  bool withCompany = false,
 }) async {
   final rates = <Rate>[];
   for (final r in await db.query('rates', orderBy: 'kind, start_date')) {
@@ -361,7 +373,8 @@ Future<BackupExtras> readExtras(
         )
       : null;
   final imported = withImported ? await readImportedMonths(db) : null;
-  return BackupExtras(rates, months, items, saved, vacation, imported);
+  final company = withCompany ? await readCompany(db) : null;
+  return BackupExtras(rates, months, items, saved, vacation, imported, company);
 }
 
 bool _sameExtras(BackupExtras? a, BackupExtras? b) {
@@ -372,6 +385,7 @@ bool _sameExtras(BackupExtras? a, BackupExtras? b) {
   for (var i = 0; i < a.rates.length; i++) {
     if (a.rates[i] != b.rates[i]) return false;
   }
+  if (a.company != b.company) return false;
   if (!_sameList(a.items, b.items) ||
       !_sameList(a.savedMoves, b.savedMoves) ||
       !_sameList(a.importedMonths, b.importedMonths)) {

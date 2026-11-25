@@ -5,7 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 /// Versión del formato de los datos. Si cambia, hace falta una migración
 /// probada y una copia previa (constitución, principio 3).
-const databaseVersion = 9;
+const databaseVersion = 10;
 
 /// Nombre del archivo, dentro de la carpeta privada de la app.
 const databaseFileName = 'horas.db';
@@ -62,6 +62,7 @@ Future<Database> openAppDatabase({
         if (version >= 7) await createSchemaV7(db);
         if (version >= 8) await createSchemaV8(db);
         if (version >= 9) await createSchemaV9(db);
+        if (version >= 10) await createSchemaV10(db);
       },
       // Cada salto de versión va aquí, con su test.
       onUpgrade: (db, from, to) async {
@@ -73,6 +74,7 @@ Future<Database> openAppDatabase({
         if (from < 7 && to >= 7) await createSchemaV7(db);
         if (from < 8 && to >= 8) await createSchemaV8(db);
         if (from < 9 && to >= 9) await createSchemaV9(db);
+        if (from < 10 && to >= 10) await createSchemaV10(db);
       },
       onDowngrade: (db, from, to) => throw StateError(
         'Los datos son de una versión más nueva de la app ($from) que '
@@ -250,4 +252,17 @@ CREATE TABLE saved_moves_v9 (
   );
   await db.execute('DROP TABLE saved_moves');
   await db.execute('ALTER TABLE saved_moves_v9 RENAME TO saved_moves');
+}
+
+/// Formato v10 (026): la empresa, con una sola fila (nombre y fecha de alta,
+/// los dos opcionales). Solo se añade la tabla: lo demás no cambia (RF-10).
+Future<void> createSchemaV10(DatabaseExecutor db) async {
+  await db.execute('''
+CREATE TABLE company (
+  id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+  name TEXT CHECK (name IS NULL OR length(name) BETWEEN 1 AND 60),
+  start_date TEXT CHECK (start_date IS NULL OR
+    start_date GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'),
+  CHECK (name IS NOT NULL OR start_date IS NOT NULL)
+)''');
 }

@@ -13,6 +13,7 @@ import 'metrics/metrics_screen.dart';
 import 'money/money_controller.dart';
 import 'money/money_screen.dart';
 import 'settings/settings_screen.dart';
+import 'company/company_controller.dart';
 import 'vacation/vacation_controller.dart';
 import 'vacation/vacation_screen.dart';
 
@@ -39,6 +40,7 @@ class HomeShell extends StatefulWidget {
     this.extras,
     this.vacation,
     this.firstSteps,
+    this.company,
   });
 
   final DayEntryRepository repository;
@@ -51,6 +53,9 @@ class HomeShell extends StatefulWidget {
 
   /// La tarjeta «Primeros pasos» de Resumen (024); nula, sin tarjeta.
   final FirstStepsController? firstSteps;
+
+  /// La empresa y la antigüedad (026); nula, sin apartado ni línea.
+  final CompanyController? company;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -84,6 +89,7 @@ class _HomeShellState extends State<HomeShell> {
       widget.money?.load();
       widget.extras?.load();
       widget.vacation?.load();
+      widget.company?.load();
       // Ajustes y Copias se cierran: se vuelve a Apuntar, en el día de hoy.
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
       if (_section != AppSection.log) setState(() => _section = AppSection.log);
@@ -102,6 +108,7 @@ class _HomeShellState extends State<HomeShell> {
         holidays: widget.holidays,
         money: widget.money,
         vacation: widget.vacation,
+        company: widget.company,
         saves: _saves,
         clock: widget.clock,
         onHolidaysOpened: widget.firstSteps?.markHolidaysSeen,
@@ -182,6 +189,7 @@ class _HomeShellState extends State<HomeShell> {
               money: widget.money!,
               holidays: widget.holidays,
               vacation: widget.vacation,
+              company: widget.company,
               actions: [gear],
             )
           else

@@ -164,7 +164,10 @@ class _LogScreenState extends State<LogScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _c.refreshToday(); // RF-5
+    if (state == AppLifecycleState.resumed) {
+      _c.refreshToday(); // RF-5
+      widget.backup?.checkOtherDevices(); // 025, RF-9
+    }
     if (state == AppLifecycleState.paused) {
       _disarm();
       _backUpOnLeaving(); // RF-4
@@ -553,6 +556,8 @@ class _LogScreenState extends State<LogScreen> with WidgetsBindingObserver {
             BackupNotice(
               backup: widget.backup!,
               onReview: _openBackups,
+              waitForSaves: () => _c.idle,
+              hideAmounts: () => widget.money?.hideAmounts ?? false,
               clock: widget.clock,
             ),
         ],

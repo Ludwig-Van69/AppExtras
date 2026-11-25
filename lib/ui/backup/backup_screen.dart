@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/backup_names.dart';
+import '../../domain/device_identity.dart';
 import '../components/confirm_dialog.dart';
 import '../components/info_button.dart';
 import '../components/state_message.dart';
@@ -11,12 +12,15 @@ import '../theme/tokens.dart';
 import 'backup_controller.dart';
 import 'backup_text.dart';
 
-const _syncthingTitle = 'Llevar las copias al ordenador';
+const _syncthingTitle = 'Llevar las copias a otro sitio';
 const _syncthingText =
     'Con la app gratuita Syncthing puedes llevar la carpeta de las copias al '
-    'ordenador. En el móvil, pon esa carpeta en modo «Solo enviar», para que '
-    'nada de lo del ordenador pueda cambiar las copias. Hay más detalle en '
-    'Ayuda.';
+    'ordenador o a otro móvil. Con un solo móvil, ponla en modo «Solo '
+    'enviar», para que nada de fuera pueda cambiar las copias. Con dos '
+    'móviles, elige en los dos la misma carpeta y ponla en «Enviar y '
+    'recibir» en ambos: al abrir la app, cada uno te ofrecerá cargar los '
+    'cambios del otro, por turnos y guardando antes lo tuyo. Hay más '
+    'detalle en Ayuda.';
 
 const _shareTitle = 'Compartir copia';
 const _shareText =
@@ -32,6 +36,74 @@ void _say(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(text)));
+}
+
+/// Pide el nuevo nombre del móvil (025, RF-2, RF-3). Se queda abierto,
+/// con el motivo, mientras el nombre no valga.
+class _RenameDeviceDialog extends StatefulWidget {
+  const _RenameDeviceDialog({required this.backup, required this.current});
+
+  final BackupService backup;
+  final String current;
+
+  @override
+  State<_RenameDeviceDialog> createState() => _RenameDeviceDialogState();
+}
+
+class _RenameDeviceDialogState extends State<_RenameDeviceDialog> {
+  late final _text = TextEditingController(text: widget.current);
+  String? _error;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final error = await widget.backup.renameDevice(_text.text);
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() => _error = error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nombre de este móvil'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Sale en el nombre de sus copias, para saber de qué móvil es '
+            'cada una',
+            style: AppText.body.copyWith(color: context.colors.textSoft),
+          ),
+          const SizedBox(height: Space.m),
+          TextField(
+            key: const ValueKey('nombre-movil'),
+            controller: _text,
+            autofocus: true,
+            maxLength: deviceNameMaxLength,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(errorText: _error),
+            onSubmitted: (_) => _save(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Guardar')),
+      ],
+    );
+  }
 }
 
 /// Pantalla «Copias y exportación» (Ajustes).
@@ -93,6 +165,40 @@ class BackupScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 025, RF-2.
+                    if (backup.device case final device?) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Este móvil',
+                                  style: AppText.label.copyWith(
+                                    color: c.textSoft,
+                                  ),
+                                ),
+                                Text(device.name, style: AppText.bodyStrong),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            key: const ValueKey('cambiar-nombre-movil'),
+                            tooltip: 'Cambiar el nombre del móvil',
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: () => showDialog<void>(
+                              context: context,
+                              builder: (_) => _RenameDeviceDialog(
+                                backup: backup,
+                                current: device.name,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: Space.s),
+                    ],
                     Row(
                       children: [
                         Expanded(
@@ -255,7 +361,8 @@ class BackupScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Cómo llevar las copias al ordenador con Syncthing',
+                      'Cómo llevar las copias al ordenador o a otro móvil con '
+                      'Syncthing',
                       style: AppText.body.copyWith(color: c.textSoft),
                     ),
                   ),
@@ -334,6 +441,13 @@ class _RestoreScreenState extends State<RestoreScreen> {
       'la copia del ${t.day} de ${monthName(t.month)}'
       '${t.year == _now.year ? '' : ' de ${t.year}'}';
 
+  /// De qué móvil es (025, RF-7, RF-8).
+  String _device(BackupInfo info) {
+    if (info.deviceId == null) return 'Copia antigua';
+    if (info.deviceId == widget.backup.device?.id) return 'Este móvil';
+    return info.deviceName ?? 'Otro móvil';
+  }
+
   String _title(BackupListing b) {
     final when = capitalized(backupMoment(b.info.takenAt, now: _now));
     return b.info.kind == BackupKind.beforeRestore
@@ -392,11 +506,14 @@ class _RestoreScreenState extends State<RestoreScreen> {
                   contentPadding: EdgeInsets.zero,
                   minVerticalPadding: Space.s,
                   title: Text(_title(b), style: AppText.bodyStrong),
-                  subtitle: Text(switch (b.dayCount) {
-                    null => 'No se puede leer esta copia',
-                    1 => '1 día con horas',
-                    final n => '$n días con horas',
-                  }, style: AppText.body.copyWith(color: c.textSoft)),
+                  subtitle: Text(
+                    '${_device(b.info)} · ${switch (b.dayCount) {
+                      null => 'no se puede leer',
+                      1 => '1 día con horas',
+                      final n => '$n días con horas',
+                    }}',
+                    style: AppText.body.copyWith(color: c.textSoft),
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   enabled: !_working,
                   onTap: () => _restore(

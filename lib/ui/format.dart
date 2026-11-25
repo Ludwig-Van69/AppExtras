@@ -126,3 +126,18 @@ int? parseHalfDays(String text) {
   if (dec != null && dec != '0' && dec != '5') return null;
   return int.parse(m[1]!) * 2 + (dec == '5' ? 1 : 0);
 }
+
+/// «12 nov 2026».
+String shortDate(DateTime d) =>
+    '${d.day} ${monthName(d.month).substring(0, 3)} ${d.year}';
+
+/// Un número entero con los miles con punto: 2459 → «2.459».
+String formatCount(int n) {
+  final digits = n.abs().toString();
+  final buffer = StringBuffer(n < 0 ? '-' : '');
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write('.');
+    buffer.write(digits[i]);
+  }
+  return buffer.toString();
+}

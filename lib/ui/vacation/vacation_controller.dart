@@ -17,13 +17,18 @@ class VacationController extends ChangeNotifier {
     required VacationRepository repository,
     DateTime Function()? clock,
     HolidayCalendar Function()? calendar,
+    Future<void> Function()? onChanged,
   }) : _repo = repository,
        _clock = clock ?? DateTime.now,
-       _calendar = calendar;
+       _calendar = calendar,
+       _onChanged = onChanged;
 
   final VacationRepository _repo;
   final DateTime Function() _clock;
   final HolidayCalendar Function()? _calendar;
+
+  /// Avisa a las copias de que hay cambios sin copiar (003, RF-4).
+  final Future<void> Function()? _onChanged;
 
   VacationStatus status = VacationStatus.loading;
 
@@ -138,6 +143,8 @@ class VacationController extends ChangeNotifier {
     try {
       await action();
       saveFailed = false;
+      // Si avisar a las copias falla, lo guardado sigue bien guardado.
+      await _onChanged?.call().catchError((Object _) {});
     } catch (_) {
       saveFailed = true; // sin datos personales en ningún registro
     }

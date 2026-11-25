@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/metrics.dart';
+import '../company/company_controller.dart';
 import '../components/info_button.dart';
 import '../components/motion_bits.dart';
 import '../components/state_message.dart';
@@ -38,12 +39,16 @@ class MetricsScreen extends StatefulWidget {
     required this.money,
     this.holidays,
     this.vacation,
+    this.company,
     this.actions = const [],
   });
 
   final MoneyController money;
   final HolidaysController? holidays;
   final VacationController? vacation;
+
+  /// La empresa: con fecha de alta, la antigüedad arriba (026, RF-4).
+  final CompanyController? company;
 
   /// Botones extra de la barra de título (el engranaje de Ajustes).
   final List<Widget> actions;
@@ -95,6 +100,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
           money,
           ?widget.holidays,
           ?widget.vacation,
+          ?widget.company,
         ]),
         builder: (context, _) => switch (money.status) {
           MoneyStatus.loading => const Center(
@@ -124,6 +130,21 @@ class _MetricsScreenState extends State<MetricsScreen> {
     return f.approx ? '$text aprox.' : text;
   }
 
+  /// «Empresa · desde el 2 mar 2020 · 6 años, 8 meses y 23 días · 2.459 días»;
+  /// nula sin fecha de alta (RF-4, RF-5).
+  String? _seniorityLine() {
+    final company = widget.company;
+    final start = company?.company.start;
+    final s = company?.seniority;
+    if (company == null || start == null || s == null) return null;
+    return [
+      ?company.company.name,
+      'desde el ${shortDate(start)}',
+      if (s.years > 0 || s.months > 0) s.phrase,
+      '${formatCount(s.totalDays)} ${s.totalDays == 1 ? 'día' : 'días'}',
+    ].join(' · ');
+  }
+
   String _hours(int minutes) => '${formatMinutes(minutes)} h';
 
   Widget _ready(BuildContext context) {
@@ -144,6 +165,22 @@ class _MetricsScreenState extends State<MetricsScreen> {
 
     return Column(
       children: [
+        if (_seniorityLine() case final line?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Space.gutter,
+              Space.s,
+              Space.gutter,
+              0,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                line,
+                style: AppText.body.copyWith(color: context.colors.textSoft),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             Space.gutter,

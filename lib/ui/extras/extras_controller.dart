@@ -1,3 +1,4 @@
+// ignore_for_file: prefer_initializing_formals
 import 'package:flutter/foundation.dart';
 
 import '../../data/extras_repository.dart';
@@ -11,11 +12,16 @@ class ExtrasController extends ChangeNotifier {
   ExtrasController({
     required ExtrasRepository repository,
     DateTime Function()? clock,
+    Future<void> Function()? onChanged,
   }) : _repo = repository,
-       _clock = clock ?? DateTime.now;
+       _clock = clock ?? DateTime.now,
+       _onChanged = onChanged;
 
   final ExtrasRepository _repo;
   final DateTime Function() _clock;
+
+  /// Avisa a las copias de que hay cambios sin copiar (003, RF-4).
+  final Future<void> Function()? _onChanged;
 
   ExtrasStatus status = ExtrasStatus.loading;
 
@@ -74,6 +80,8 @@ class ExtrasController extends ChangeNotifier {
     try {
       await action();
       saveFailed = false;
+      // Si avisar a las copias falla, lo guardado sigue bien guardado.
+      await _onChanged?.call().catchError((Object _) {});
     } catch (_) {
       saveFailed = true; // sin datos personales en ningún registro
     }
